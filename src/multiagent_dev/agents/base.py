@@ -1,1 +1,88 @@
 """Base agent abstractions."""
+
+from __future__ import annotations
+
+from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from multiagent_dev.execution.base import CodeExecutor
+    from multiagent_dev.llm.base import LLMClient
+    from multiagent_dev.memory.memory import MemoryService
+    from multiagent_dev.orchestrator import Orchestrator
+    from multiagent_dev.workspace.manager import WorkspaceManager
+
+
+@dataclass
+class AgentMessage:
+    """A message exchanged between agents via the orchestrator.
+
+    Attributes:
+        sender: Identifier of the sender agent.
+        recipient: Identifier of the recipient agent.
+        content: The textual payload of the message.
+        metadata: Additional structured data about the message.
+    """
+
+    sender: str
+    recipient: str
+    content: str
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+class Agent(ABC):
+    """Base class for all agents in the system."""
+
+    def __init__(
+        self,
+        agent_id: str,
+        role: str,
+        llm_client: LLMClient,
+        orchestrator: Orchestrator,
+        workspace: WorkspaceManager,
+        executor: CodeExecutor,
+        memory: MemoryService,
+    ) -> None:
+        """Initialize the agent with its dependencies.
+
+        Args:
+            agent_id: Unique identifier for the agent.
+            role: Human-readable role description.
+            llm_client: Client used to query the language model.
+            orchestrator: Orchestrator coordinating message flow.
+            workspace: Workspace manager for file operations.
+            executor: Code execution engine.
+            memory: Memory service for storing conversation data.
+        """
+
+        self._agent_id = agent_id
+        self._role = role
+        self._llm_client = llm_client
+        self._orchestrator = orchestrator
+        self._workspace = workspace
+        self._executor = executor
+        self._memory = memory
+
+    @property
+    def agent_id(self) -> str:
+        """Return the agent's identifier."""
+
+        return self._agent_id
+
+    @property
+    def role(self) -> str:
+        """Return the agent's role description."""
+
+        return self._role
+
+    @abstractmethod
+    def handle_message(self, message: AgentMessage) -> list[AgentMessage]:
+        """Process a message and return new messages to send.
+
+        Args:
+            message: The incoming message from another agent.
+
+        Returns:
+            A list of new messages to enqueue via the orchestrator.
+        """
