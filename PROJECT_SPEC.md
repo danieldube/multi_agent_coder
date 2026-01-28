@@ -569,6 +569,220 @@ Implement the project in the following order. After each phase, run tests and en
    * How to run a simple task on a sample repo.
 3. Ensure all modules are type-checked and tested.
 
+### Phase 9 – Tool & Function Registry
+
+**Goal:**
+Introduce first-class “tools” that agents can invoke in a structured, extensible way (beyond raw shell commands).
+
+**Requirements:**
+
+1. Define a `Tool` abstraction:
+
+    * Name
+    * Description
+    * Input schema
+    * Execution method
+2. Implement a `ToolRegistry`:
+
+    * Register tools by name.
+    * Allow lookup by agents via orchestrator.
+3. Built-in tools (minimum):
+
+    * `run_command` (wraps CodeExecutor)
+    * `read_file`
+    * `write_file`
+4. Agents must:
+
+    * Invoke tools via orchestrator, not directly.
+    * Never hard-code tool implementations.
+
+**Definition of Done:**
+
+* New tools can be added without modifying existing agents.
+* Agents select tools via name + arguments.
+* Tool execution is logged and testable.
+
+---
+
+### Phase 10 – Version Control (Git) Integration
+
+**Goal:**
+Allow agents to interact with Git in a controlled, reviewable way.
+
+**Requirements:**
+
+1. Introduce a `VersionControlService` abstraction.
+2. Implement `GitService` with:
+
+    * Status
+    * Diff
+    * Commit
+    * Branch creation
+3. Git operations must:
+
+    * Be optional and configurable.
+    * Never auto-push or create PRs by default.
+4. ReviewerAgent must be able to:
+
+    * Inspect diffs before approval.
+    * Gate commits on approval.
+
+**Definition of Done:**
+
+* No agent executes `git` directly.
+* Git access is sandboxed to the workspace.
+* All commits are traceable to an agent decision.
+
+---
+
+### Phase 11 – Advanced Memory & Retrieval (RAG-Ready)
+
+**Goal:**
+Enable scalability to large codebases and long sessions.
+
+**Requirements:**
+
+1. Extend `MemoryService` to support:
+
+    * Short-term (session) memory.
+    * Long-term (project) memory.
+2. Introduce a `RetrievalService` abstraction:
+
+    * Interface only; implementation may be naive.
+3. Support:
+
+    * File summaries.
+    * Chunked code storage.
+    * Query-based retrieval.
+4. Do **not** require a real vector DB in v1; in-memory is acceptable.
+
+**Definition of Done:**
+
+* Agents retrieve context via Memory/Retrieval services.
+* No agent loads the entire repository into prompts.
+* Retrieval logic is replaceable without agent changes.
+
+---
+
+### Phase 12 – Human-in-the-Loop Control
+
+**Goal:**
+Allow explicit user approvals and interventions at key points.
+
+**Requirements:**
+
+1. Introduce a `UserProxyAgent`:
+
+    * Represents the human.
+    * Can approve, reject, or modify decisions.
+2. Add approval checkpoints:
+
+    * Before code execution (optional).
+    * Before committing changes.
+3. Support execution modes:
+
+    * Fully autonomous.
+    * Approval-required.
+
+**Definition of Done:**
+
+* Orchestrator can pause and resume workflows.
+* User input is explicit and logged.
+* Autonomous and interactive modes share the same code paths.
+
+---
+
+### Phase 13 – Concurrency & Durable Execution
+
+**Goal:**
+Prepare the system for long-running and parallel workflows.
+
+**Requirements:**
+
+1. Refactor orchestrator to:
+
+    * Support async execution (`asyncio`).
+    * Allow parallel agent steps where safe.
+2. Introduce workflow state persistence:
+
+    * Serializable task state.
+    * Resume after interruption.
+3. Ensure determinism where required.
+
+**Definition of Done:**
+
+* Workflow can be paused and resumed.
+* No race conditions between agents.
+* Async code remains readable and testable.
+
+---
+
+### Phase 14 – Observability, Metrics, and Evaluation
+
+**Goal:**
+Make agent behavior measurable and debuggable.
+
+**Requirements:**
+
+1. Structured logging for:
+
+    * Agent decisions.
+    * LLM calls.
+    * Tool executions.
+2. Collect metrics:
+
+    * Execution time.
+    * Number of iterations.
+    * Token usage (if available).
+3. Add a basic evaluation harness:
+
+    * Run predefined tasks.
+    * Compare outcomes.
+
+**Definition of Done:**
+
+* Logs are machine-readable.
+* Metrics can be exported.
+* Failures are diagnosable post-mortem.
+
+---
+
+### Phase 15 – Multi-Language & Build Strategy Extensions
+
+**Goal:**
+Support heterogeneous projects more robustly.
+
+**Requirements:**
+
+1. Extend configuration to define:
+
+    * Project language(s).
+    * Build system(s).
+    * Test commands per language.
+2. Provide language profiles:
+
+    * Python
+    * C++ (CMake)
+    * Generic shell
+3. Execution logic must remain generic.
+
+**Definition of Done:**
+
+* No language-specific logic inside agents.
+* Adding a new language requires configuration, not code changes.
+
+---
+
+## Final Note on Scope Control
+
+Phases **1–8 define a complete, production-quality MVP**.
+Phases **9–15 progressively evolve the system into a full-scale agentic development platform.
+
+Each phase is **architecturally isolated** so that:
+
+* Earlier phases never need redesign.
+* Codex can stop after any phase with a coherent system.
+
 ---
 
 ## 6. Coding Guidelines for the AI Model
