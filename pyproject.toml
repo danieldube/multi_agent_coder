@@ -1,0 +1,44 @@
+[project]
+name = "multiagent-dev"
+version = "0.1.0"
+description = "Multi-agent software development framework"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [{name = "OpenAI", email = "noreply@openai.com"}]
+license = {text = "MIT"}
+dependencies = [
+  "requests>=2.31.0",
+  "typer[all]>=0.9.0",
+  "pydantic>=2.5.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=7.4.0",
+  "mypy>=1.8.0",
+  "ruff>=0.3.0",
+]
+
+[project.scripts]
+multiagent-dev = "multiagent_dev.cli.main:app"
+
+[build-system]
+requires = ["hatchling>=1.18.0"]
+build-backend = "hatchling.build"
+
+[tool.ruff]
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+
+[tool.mypy]
+python_version = "3.11"
+files = ["src", "tests"]
+strict = true
+
+[tool.pytest.ini_options]
+addopts = "-ra"
+testpaths = ["tests"]
+pythonpath = ["src"]

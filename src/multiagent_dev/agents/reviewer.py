@@ -1,0 +1,1 @@
+"""${file^} agent implementation placeholder."""
