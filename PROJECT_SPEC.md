@@ -1,7 +1,3 @@
-Below is a self-contained project brief you can drop into a clean repository (e.g. as `PROJECT_SPEC.md` or `README.md`) and hand to Codex / an AI coding model. It is written so that a code model can implement the system end-to-end without additional context.
-
----
-
 # Project: Multi-Agent Software Development Framework (Python, Linux)
 
 ## 1. Goal and Scope
