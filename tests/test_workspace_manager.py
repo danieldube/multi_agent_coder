@@ -4,7 +4,11 @@ from pathlib import Path
 
 import pytest
 
-from multiagent_dev.workspace.manager import WorkspaceManager, WorkspacePathError
+from multiagent_dev.workspace.manager import (
+    WorkspaceManager,
+    WorkspacePathError,
+    WorkspaceWriteError,
+)
 
 
 def test_write_and_read_roundtrip(tmp_path: Path) -> None:
@@ -40,3 +44,10 @@ def test_prevents_path_traversal(tmp_path: Path) -> None:
 
     with pytest.raises(WorkspacePathError):
         manager.read_text(Path("..") / "outside.txt")
+
+
+def test_write_disallowed_when_read_only(tmp_path: Path) -> None:
+    manager = WorkspaceManager(tmp_path, allow_write=False)
+
+    with pytest.raises(WorkspaceWriteError):
+        manager.write_text(Path("file.txt"), "nope")
