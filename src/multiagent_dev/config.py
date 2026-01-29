@@ -16,7 +16,7 @@ class AppConfig:
     """
 
     workspace_root: Path = Path(".")
-    llm: "LLMConfig" = field(default_factory=lambda: LLMConfig())
+    llm: LLMConfig = field(default_factory=lambda: LLMConfig())
 
 
 @dataclass(frozen=True)

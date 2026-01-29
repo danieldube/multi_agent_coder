@@ -102,11 +102,14 @@ class OpenAIClient(LLMClient):
                     timeout=self._config.timeout_s,
                 )
                 if response.status_code >= 400:
-                    if self._should_retry(response.status_code) and attempt < self._config.max_retries:
+                    if self._should_retry(response.status_code) and attempt < (
+                        self._config.max_retries
+                    ):
                         time.sleep(0.5 * (attempt + 1))
                         continue
                     raise LLMClientError(
-                        f"OpenAI API request failed with status {response.status_code}: {response.text}"
+                        "OpenAI API request failed with status "
+                        f"{response.status_code}: {response.text}"
                     )
                 data = response.json()
                 if not isinstance(data, dict):
