@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import os
 import subprocess
 import time
 from pathlib import Path
@@ -93,4 +92,3 @@ class DockerExecutor(CodeExecutor):
         except ValueError as exc:
             raise ValueError("Working directory must be inside workspace root") from exc
         return f"/workspace/{relative.as_posix()}"
-

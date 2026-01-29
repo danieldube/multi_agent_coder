@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Dict, List
-
 from multiagent_dev.agents.base import AgentMessage
 
 
@@ -13,8 +11,8 @@ class MemoryService:
     def __init__(self) -> None:
         """Initialize empty memory stores."""
 
-        self._conversations: Dict[str, List[AgentMessage]] = {}
-        self._notes: Dict[str, str] = {}
+        self._conversations: dict[str, list[AgentMessage]] = {}
+        self._notes: dict[str, str] = {}
 
     def append_message(self, session_id: str, message: AgentMessage) -> None:
         """Append a message to a session history.

@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 from collections import deque
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Deque, Iterable
 
 from multiagent_dev.agents.base import Agent, AgentMessage
 from multiagent_dev.memory.memory import MemoryService
@@ -58,7 +58,7 @@ class Orchestrator:
 
         self._agents: dict[str, Agent] = {}
         self._memory = memory
-        self._queue: Deque[AgentMessage] = deque()
+        self._queue: deque[AgentMessage] = deque()
 
     def register_agent(self, agent: Agent) -> None:
         """Register an agent with the orchestrator.
