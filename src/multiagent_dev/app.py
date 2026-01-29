@@ -28,6 +28,7 @@ from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.llm.registry import create_llm_client
 from multiagent_dev.memory.memory import MemoryService
 from multiagent_dev.orchestrator import Orchestrator, TaskResult, UserTask
+from multiagent_dev.util.logging import get_logger
 from multiagent_dev.workspace.manager import WorkspaceManager
 
 
@@ -46,6 +47,9 @@ class RuntimeContext:
     llm_client: LLMClient
 
 
+_LOGGER = get_logger("multiagent_dev.app")
+
+
 def initialize_config(workspace: Path) -> Path:
     """Create a default configuration file in the workspace.
 
@@ -62,11 +66,15 @@ def initialize_config(workspace: Path) -> Path:
     workspace = workspace.resolve()
     config_path = workspace / "multiagent_dev.yaml"
     if config_path.exists():
-        raise AppConfigError(f"Config file already exists at {config_path}")
+        raise AppConfigError(
+            f"Config file already exists at {config_path}. Remove it or choose another "
+            "workspace."
+        )
     config_path.write_text(
         json.dumps(config_to_dict(AppConfig(workspace_root=workspace)), indent=2),
         encoding="utf-8",
     )
+    _LOGGER.info("Initialized configuration at %s", config_path)
     return config_path
 
 
@@ -88,11 +96,15 @@ def run_task(
         TaskResult summarizing the orchestration run.
     """
 
+    _LOGGER.info("Loading configuration from workspace %s", workspace)
     config = load_config(workspace)
     config = update_workspace_root(config, workspace.resolve())
     if execution_mode is not None:
         config = update_executor_mode(config, execution_mode)
 
+    _LOGGER.info(
+        "Starting task execution with execution mode '%s'.", config.executor.mode
+    )
     runtime = build_runtime(config, allow_write=allow_write)
     task = UserTask(task_id=str(uuid.uuid4()), description=description)
     return runtime.orchestrator.run_task(task)
@@ -125,6 +137,7 @@ def build_runtime(
     agents = _build_agents(config.agents, orchestrator, workspace, executor_instance, memory, llm)
     for agent in agents:
         orchestrator.register_agent(agent)
+    _LOGGER.info("Runtime initialized with %s agents.", len(agents))
     return RuntimeContext(
         orchestrator=orchestrator,
         memory=memory,

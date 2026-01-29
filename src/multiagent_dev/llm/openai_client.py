@@ -10,6 +10,7 @@ from typing import Any, cast
 import requests  # type: ignore[import-untyped]
 
 from multiagent_dev.llm.base import LLMClient, LLMClientError, LLMConfigurationError
+from multiagent_dev.util.logging import get_logger
 
 
 @dataclass(frozen=True)
@@ -62,6 +63,7 @@ class OpenAIClient(LLMClient):
             max_retries=max_retries,
         )
         self._session = session or requests.Session()
+        self._logger = get_logger(self.__class__.__name__)
 
     def complete_chat(
         self,
@@ -79,6 +81,7 @@ class OpenAIClient(LLMClient):
         if max_tokens is not None:
             payload["max_tokens"] = max_tokens
 
+        self._logger.debug("Requesting chat completion with model '%s'.", self._config.model)
         response_data = self._post("/chat/completions", payload)
         try:
             content = response_data["choices"][0]["message"]["content"]
