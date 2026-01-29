@@ -33,7 +33,7 @@ def test_openai_client_reads_env_and_returns_content(monkeypatch: pytest.MonkeyP
             {"choices": [{"message": {"content": "hello"}}]},
         )
 
-    client._session.post = mock_post  # type: ignore[method-assign]
+    client._session.post = mock_post
 
     result = client.complete_chat([{"role": "user", "content": "hi"}])
     assert result == "hello"
@@ -56,7 +56,7 @@ def test_openai_client_retries_on_transient_error(monkeypatch: pytest.MonkeyPatc
     def mock_post(*_args: Any, **_kwargs: Any) -> _MockResponse:
         return responses.pop(0)
 
-    client._session.post = mock_post  # type: ignore[method-assign]
+    client._session.post = mock_post
 
     result = client.complete_chat([{"role": "user", "content": "hi"}])
     assert result == "retry"

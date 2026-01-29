@@ -1,8 +1,13 @@
 from __future__ import annotations
 
+from typing import cast
+
 from multiagent_dev.agents.base import Agent, AgentMessage
+from multiagent_dev.execution.base import CodeExecutor
+from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.memory.memory import MemoryService
 from multiagent_dev.orchestrator import Orchestrator, OrchestratorError, UserTask
+from multiagent_dev.workspace.manager import WorkspaceManager
 
 
 class StubAgent(Agent):
@@ -10,11 +15,11 @@ class StubAgent(Agent):
         super().__init__(
             agent_id=agent_id,
             role="stub",
-            llm_client=object(),
-            orchestrator=object(),
-            workspace=object(),
-            executor=object(),
-            memory=object(),
+            llm_client=cast(LLMClient, object()),
+            orchestrator=cast(Orchestrator, object()),
+            workspace=cast(WorkspaceManager, object()),
+            executor=cast(CodeExecutor, object()),
+            memory=cast(MemoryService, object()),
         )
         self._responses = responses
         self.received: list[AgentMessage] = []

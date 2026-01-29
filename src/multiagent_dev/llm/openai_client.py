@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, cast
 
-import requests
+import requests  # type: ignore[import-untyped]
 
 from multiagent_dev.llm.base import LLMClient, LLMClientError, LLMConfigurationError
 
@@ -81,9 +81,12 @@ class OpenAIClient(LLMClient):
 
         response_data = self._post("/chat/completions", payload)
         try:
-            return response_data["choices"][0]["message"]["content"]
+            content = response_data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
             raise LLMClientError("Unexpected response format from OpenAI API.") from exc
+        if not isinstance(content, str):
+            raise LLMClientError("Unexpected response format from OpenAI API.")
+        return content
 
     def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = f"{self._config.base_url}{path}"
@@ -105,7 +108,10 @@ class OpenAIClient(LLMClient):
                     raise LLMClientError(
                         f"OpenAI API request failed with status {response.status_code}: {response.text}"
                     )
-                return response.json()
+                data = response.json()
+                if not isinstance(data, dict):
+                    raise LLMClientError("Unexpected response format from OpenAI API.")
+                return cast(dict[str, Any], data)
             except requests.RequestException as exc:
                 last_error = exc
                 if attempt < self._config.max_retries:
