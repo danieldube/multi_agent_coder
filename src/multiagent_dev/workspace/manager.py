@@ -11,15 +11,21 @@ class WorkspacePathError(ValueError):
     """Raised when a path escapes the workspace root."""
 
 
+class WorkspaceWriteError(RuntimeError):
+    """Raised when a write is attempted but writes are disabled."""
+
+
 @dataclass(frozen=True)
 class WorkspaceManager:
     """Manage file operations scoped to a workspace root.
 
     Attributes:
         root: The root directory that bounds all file operations.
+        allow_write: Whether write operations are permitted.
     """
 
     root: Path
+    allow_write: bool = True
 
     def __post_init__(self) -> None:
         """Normalize the workspace root path."""
@@ -63,6 +69,8 @@ class WorkspaceManager:
             content: Text to write.
         """
 
+        if not self.allow_write:
+            raise WorkspaceWriteError("Workspace is read-only; writes are disabled.")
         resolved = self._resolve_path(path)
         resolved.parent.mkdir(parents=True, exist_ok=True)
         resolved.write_text(content, encoding="utf-8")
