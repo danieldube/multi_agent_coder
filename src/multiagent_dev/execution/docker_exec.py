@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 
 from multiagent_dev.execution.base import CodeExecutor, ExecutionResult
+from multiagent_dev.util.logging import get_logger
 
 
 class DockerExecutor(CodeExecutor):
@@ -22,6 +23,7 @@ class DockerExecutor(CodeExecutor):
 
         self._workspace_root = workspace_root.resolve()
         self._image = image
+        self._logger = get_logger(self.__class__.__name__)
 
     def run(
         self,
@@ -42,8 +44,12 @@ class DockerExecutor(CodeExecutor):
             ExecutionResult with stdout, stderr, exit code, and duration.
         """
 
+        if not command:
+            raise ValueError("Command must contain at least one argument.")
+
         docker_command = self._build_docker_command(command, cwd=cwd, env=env)
         start = time.monotonic()
+        self._logger.info("Running command in Docker: %s", command)
         completed = subprocess.run(
             docker_command,
             capture_output=True,
@@ -52,6 +58,11 @@ class DockerExecutor(CodeExecutor):
             check=False,
         )
         duration = time.monotonic() - start
+        self._logger.info(
+            "Docker command finished with exit code %s in %.2fs.",
+            completed.returncode,
+            duration,
+        )
 
         return ExecutionResult(
             command=list(command),

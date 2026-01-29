@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 
 from multiagent_dev.agents.base import Agent, AgentMessage
 from multiagent_dev.memory.memory import MemoryService
+from multiagent_dev.util.logging import get_logger
 
 
 class OrchestratorError(RuntimeError):
@@ -59,6 +60,7 @@ class Orchestrator:
         self._agents: dict[str, Agent] = {}
         self._memory = memory
         self._queue: deque[AgentMessage] = deque()
+        self._logger = get_logger(self.__class__.__name__)
 
     def register_agent(self, agent: Agent) -> None:
         """Register an agent with the orchestrator.
@@ -68,6 +70,7 @@ class Orchestrator:
         """
 
         self._agents[agent.agent_id] = agent
+        self._logger.info("Registered agent '%s' with role '%s'.", agent.agent_id, agent.role)
 
     def get_agent(self, agent_id: str) -> Agent | None:
         """Retrieve a registered agent by ID."""
@@ -82,6 +85,9 @@ class Orchestrator:
         """
 
         self._queue.append(message)
+        self._logger.debug(
+            "Queued message from '%s' to '%s'.", message.sender, message.recipient
+        )
 
     def _dispatch(self, message: AgentMessage) -> Iterable[AgentMessage]:
         """Dispatch a message to the appropriate agent.
@@ -98,6 +104,7 @@ class Orchestrator:
 
         agent = self.get_agent(message.recipient)
         if agent is None:
+            self._logger.error("Attempted to dispatch to unknown agent '%s'.", message.recipient)
             raise OrchestratorError(f"Unknown agent: {message.recipient}")
         return agent.handle_message(message)
 
@@ -118,6 +125,7 @@ class Orchestrator:
             content=task.description,
         )
         self.send_message(initial_message)
+        self._logger.info("Starting task '%s' with initial agent '%s'.", task.task_id, task.initial_agent_id)
         history: list[AgentMessage] = []
         processed = 0
 
@@ -131,6 +139,12 @@ class Orchestrator:
             processed += 1
 
         completed = not self._queue
+        if completed:
+            self._logger.info("Task '%s' completed after %s messages.", task.task_id, processed)
+        else:
+            self._logger.warning(
+                "Task '%s' halted after reaching max steps (%s).", task.task_id, max_steps
+            )
         return TaskResult(
             task_id=task.task_id,
             completed=completed,

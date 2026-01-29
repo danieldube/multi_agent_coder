@@ -7,8 +7,22 @@ from pathlib import Path
 import typer
 
 from multiagent_dev.app import AppConfigError, initialize_config, run_task
+from multiagent_dev.util.logging import configure_logging
 
 app = typer.Typer(help="Multi-agent development workflow CLI.")
+
+
+@app.callback()
+def main(
+    log_level: str = typer.Option(
+        "INFO",
+        "--log-level",
+        help="Logging level (e.g., DEBUG, INFO, WARNING).",
+    ),
+) -> None:
+    """Configure CLI-level options."""
+
+    configure_logging(log_level)
 
 
 @app.command()

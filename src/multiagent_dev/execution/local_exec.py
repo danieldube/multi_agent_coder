@@ -8,10 +8,14 @@ import time
 from pathlib import Path
 
 from multiagent_dev.execution.base import CodeExecutor, ExecutionResult
+from multiagent_dev.util.logging import get_logger
 
 
 class LocalExecutor(CodeExecutor):
     """Execute commands on the local host."""
+
+    def __init__(self) -> None:
+        self._logger = get_logger(self.__class__.__name__)
 
     def run(
         self,
@@ -32,11 +36,15 @@ class LocalExecutor(CodeExecutor):
             ExecutionResult with stdout, stderr, exit code, and duration.
         """
 
+        if not command:
+            raise ValueError("Command must contain at least one argument.")
+
         merged_env = os.environ.copy()
         if env:
             merged_env.update(env)
 
         start = time.monotonic()
+        self._logger.info("Running command locally: %s", command)
         completed = subprocess.run(
             command,
             cwd=str(cwd) if cwd is not None else None,
@@ -47,6 +55,11 @@ class LocalExecutor(CodeExecutor):
             check=False,
         )
         duration = time.monotonic() - start
+        self._logger.info(
+            "Command finished with exit code %s in %.2fs.",
+            completed.returncode,
+            duration,
+        )
 
         return ExecutionResult(
             command=list(command),
@@ -55,4 +68,3 @@ class LocalExecutor(CodeExecutor):
             exit_code=completed.returncode,
             duration_s=duration,
         )
-
