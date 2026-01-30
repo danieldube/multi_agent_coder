@@ -103,4 +103,6 @@ class Agent(ABC):
             ToolResult from the executed tool.
         """
 
-        return self._orchestrator.execute_tool(name, arguments, caller=self.agent_id)
+        return self._orchestrator.execute_tool_with_approval(
+            name, arguments, caller=self.agent_id
+        )

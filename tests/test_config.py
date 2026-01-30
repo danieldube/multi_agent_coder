@@ -9,6 +9,7 @@ def test_app_config_defaults() -> None:
     assert config.executor.mode == "local"
     assert config.version_control.enabled is False
     assert config.agents
+    assert {agent.agent_id for agent in config.agents} >= {"planner", "user_proxy"}
 
 
 def test_load_config_from_pyproject(tmp_path: Path) -> None:
@@ -45,4 +46,4 @@ git_binary = "git"
     assert config.llm.model == "unit-test-model"
     assert config.executor.mode == "docker"
     assert config.version_control.enabled is True
-    assert config.agents[0].agent_id == "planner"
+    assert any(agent.agent_id == "planner" for agent in config.agents)
