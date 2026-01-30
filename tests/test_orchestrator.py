@@ -6,6 +6,7 @@ from multiagent_dev.agents.base import Agent, AgentMessage
 from multiagent_dev.execution.base import CodeExecutor
 from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.memory.memory import MemoryService
+from multiagent_dev.memory.retrieval import RetrievalService
 from multiagent_dev.orchestrator import Orchestrator, OrchestratorError, UserTask
 from multiagent_dev.tools.registry import ToolRegistry
 from multiagent_dev.workspace.manager import WorkspaceManager
@@ -21,6 +22,7 @@ class StubAgent(Agent):
             workspace=cast(WorkspaceManager, object()),
             executor=cast(CodeExecutor, object()),
             memory=cast(MemoryService, object()),
+            retrieval=cast(RetrievalService, object()),
         )
         self._responses = responses
         self.received: list[AgentMessage] = []

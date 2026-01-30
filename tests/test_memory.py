@@ -11,5 +11,8 @@ def test_memory_stores_messages_and_notes() -> None:
 
     assert messages == [message]
 
-    memory.save_note("plan", "do the thing")
-    assert memory.get_note("plan") == "do the thing"
+    memory.save_session_note("session-1", "plan", "do the thing")
+    assert memory.get_session_note("session-1", "plan") == "do the thing"
+
+    memory.save_project_note("roadmap", "ship it")
+    assert memory.get_project_note("roadmap") == "ship it"

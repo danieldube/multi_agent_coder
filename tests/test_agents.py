@@ -11,6 +11,7 @@ from multiagent_dev.agents.tester import TesterAgent
 from multiagent_dev.execution.base import CodeExecutor, ExecutionResult
 from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.memory.memory import MemoryService
+from multiagent_dev.memory.retrieval import InMemoryRetrievalService
 from multiagent_dev.orchestrator import Orchestrator
 from multiagent_dev.tools.builtins import build_default_tool_registry
 from multiagent_dev.version_control.base import (
@@ -77,6 +78,7 @@ class FakeVersionControl(VersionControlService):
 
 def test_planner_agent_creates_plan_messages() -> None:
     memory = MemoryService()
+    retrieval = InMemoryRetrievalService()
     llm = FakeLLM(["1. Implement feature\n2. Run tests"])  # noqa: E501
     workspace = WorkspaceManager(Path("."))
     executor = FakeExecutor([])
@@ -90,6 +92,7 @@ def test_planner_agent_creates_plan_messages() -> None:
         workspace=workspace,
         executor=executor,
         memory=memory,
+        retrieval=retrieval,
     )
 
     message = AgentMessage(
@@ -102,11 +105,15 @@ def test_planner_agent_creates_plan_messages() -> None:
 
     recipients = {response.recipient for response in responses}
     assert recipients == {"coder", "tester", "reviewer"}
-    assert memory.get_note("plan:task-123") == "1. Implement feature\n2. Run tests"
+    assert (
+        memory.get_session_note("task-123", "plan:task-123")
+        == "1. Implement feature\n2. Run tests"
+    )
 
 
 def test_coding_agent_writes_files_and_snapshots(tmp_path: Path) -> None:
     memory = MemoryService()
+    retrieval = InMemoryRetrievalService()
     llm = FakeLLM(
         [
             "FILE: src/new_file.py\nCODE:\nprint('hello')",
@@ -124,6 +131,7 @@ def test_coding_agent_writes_files_and_snapshots(tmp_path: Path) -> None:
         workspace=workspace,
         executor=executor,
         memory=memory,
+        retrieval=retrieval,
     )
 
     message = AgentMessage(
@@ -135,12 +143,15 @@ def test_coding_agent_writes_files_and_snapshots(tmp_path: Path) -> None:
 
     file_path = tmp_path / "src" / "new_file.py"
     assert file_path.read_text(encoding="utf-8") == "print('hello')\n"
-    assert memory.get_note("file_snapshot:src/new_file.py") == ""
+    assert (
+        memory.get_session_note("default", "file_snapshot:src/new_file.py") == ""
+    )
     assert {response.recipient for response in responses} == {"reviewer", "planner"}
 
 
 def test_coding_agent_requires_file_blocks(tmp_path: Path) -> None:
     memory = MemoryService()
+    retrieval = InMemoryRetrievalService()
     llm = FakeLLM(["No file updates here"])  # noqa: E501
     workspace = WorkspaceManager(tmp_path)
     executor = FakeExecutor([])
@@ -154,6 +165,7 @@ def test_coding_agent_requires_file_blocks(tmp_path: Path) -> None:
         workspace=workspace,
         executor=executor,
         memory=memory,
+        retrieval=retrieval,
     )
 
     message = AgentMessage(
@@ -172,6 +184,7 @@ def test_coding_agent_requires_file_blocks(tmp_path: Path) -> None:
 
 def test_reviewer_agent_approves_changes(tmp_path: Path) -> None:
     memory = MemoryService()
+    retrieval = InMemoryRetrievalService()
     llm = FakeLLM(["Approved. Looks good."])  # noqa: E501
     workspace = WorkspaceManager(tmp_path)
     executor = FakeExecutor([])
@@ -179,7 +192,7 @@ def test_reviewer_agent_approves_changes(tmp_path: Path) -> None:
     orchestrator = Orchestrator(memory, tool_registry)
     file_path = tmp_path / "example.py"
     file_path.write_text("print('new')\n", encoding="utf-8")
-    memory.save_note("file_snapshot:example.py", "print('old')\n")
+    memory.save_session_note("default", "file_snapshot:example.py", "print('old')\n")
 
     agent = ReviewerAgent(
         agent_id="reviewer",
@@ -189,6 +202,7 @@ def test_reviewer_agent_approves_changes(tmp_path: Path) -> None:
         workspace=workspace,
         executor=executor,
         memory=memory,
+        retrieval=retrieval,
     )
 
     message = AgentMessage(
@@ -205,6 +219,7 @@ def test_reviewer_agent_approves_changes(tmp_path: Path) -> None:
 
 def test_reviewer_agent_uses_vcs_diff(tmp_path: Path) -> None:
     memory = MemoryService()
+    retrieval = InMemoryRetrievalService()
     llm = FakeLLM(["Approved."])  # noqa: E501
     workspace = WorkspaceManager(tmp_path)
     executor = FakeExecutor([])
@@ -222,6 +237,7 @@ def test_reviewer_agent_uses_vcs_diff(tmp_path: Path) -> None:
         workspace=workspace,
         executor=executor,
         memory=memory,
+        retrieval=retrieval,
     )
 
     message = AgentMessage(
@@ -238,6 +254,7 @@ def test_reviewer_agent_uses_vcs_diff(tmp_path: Path) -> None:
 
 def test_tester_agent_runs_commands() -> None:
     memory = MemoryService()
+    retrieval = InMemoryRetrievalService()
     llm = cast(LLMClient, object())
     workspace = WorkspaceManager(Path("."))
     results = [
@@ -255,6 +272,7 @@ def test_tester_agent_runs_commands() -> None:
         workspace=workspace,
         executor=executor,
         memory=memory,
+        retrieval=retrieval,
         test_commands=[["pytest"], ["ruff"]],
     )
 

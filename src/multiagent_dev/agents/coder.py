@@ -43,6 +43,7 @@ class CodingAgent(Agent):
         updates = self._parse_updates(response)
         modified_files: list[str] = []
 
+        session_id = message.metadata.get("task_id", "default")
         for update in updates:
             exists = self.use_tool("file_exists", {"path": str(update.path)})
             if not exists.success or not isinstance(exists.output, dict):
@@ -53,7 +54,11 @@ class CodingAgent(Agent):
                 previous = self._read_file(update.path)
             else:
                 previous = ""
-            self._memory.save_note(self._snapshot_key(update.path), previous)
+            self._memory.save_session_note(
+                session_id,
+                self._snapshot_key(update.path),
+                previous,
+            )
             write_result = self.use_tool(
                 "write_file",
                 {"path": str(update.path), "content": update.content},
@@ -63,6 +68,7 @@ class CodingAgent(Agent):
                     f"Failed to write file {update.path}: {write_result.error}"
                 )
             modified_files.append(str(update.path))
+            self._retrieval.index_text(str(update.path), update.content)
 
         summary = "Updated files: " + ", ".join(modified_files)
         metadata = {"files": modified_files}
