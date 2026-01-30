@@ -161,6 +161,7 @@ class Orchestrator:
             sender="user",
             recipient=task.initial_agent_id,
             content=task.description,
+            metadata={"task_id": task.task_id},
         )
         self.send_message(initial_message)
         self._logger.info("Starting task '%s' with initial agent '%s'.", task.task_id, task.initial_agent_id)
@@ -173,6 +174,7 @@ class Orchestrator:
             self._memory.append_message(task.task_id, message)
             responses = self._dispatch(message)
             for response in responses:
+                response.metadata.setdefault("task_id", task.task_id)
                 self.send_message(response)
             processed += 1
 

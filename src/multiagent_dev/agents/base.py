@@ -10,6 +10,7 @@ if TYPE_CHECKING:
     from multiagent_dev.execution.base import CodeExecutor
     from multiagent_dev.llm.base import LLMClient
     from multiagent_dev.memory.memory import MemoryService
+    from multiagent_dev.memory.retrieval import RetrievalService
     from multiagent_dev.orchestrator import Orchestrator
     from multiagent_dev.workspace.manager import WorkspaceManager
 from multiagent_dev.tools.base import ToolResult
@@ -44,6 +45,7 @@ class Agent(ABC):
         workspace: WorkspaceManager,
         executor: CodeExecutor,
         memory: MemoryService,
+        retrieval: RetrievalService,
     ) -> None:
         """Initialize the agent with its dependencies.
 
@@ -55,6 +57,7 @@ class Agent(ABC):
             workspace: Workspace manager for file operations.
             executor: Code execution engine.
             memory: Memory service for storing conversation data.
+            retrieval: Retrieval service for indexed project context.
         """
 
         self._agent_id = agent_id
@@ -64,6 +67,7 @@ class Agent(ABC):
         self._workspace = workspace
         self._executor = executor
         self._memory = memory
+        self._retrieval = retrieval
 
     @property
     def agent_id(self) -> str:

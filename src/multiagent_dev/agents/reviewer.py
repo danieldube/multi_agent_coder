@@ -80,11 +80,14 @@ class ReviewerAgent(Agent):
         vcs_diff = self._try_collect_vcs_diff(file_paths)
         if vcs_diff is not None:
             return vcs_diff
+        session_id = message.metadata.get("task_id", "default")
         diffs: list[str] = []
         for file_path in file_paths:
             path = Path(file_path)
             new_content = self._read_file(path)
-            previous = self._memory.get_note(self._snapshot_key(path)) or ""
+            previous = (
+                self._memory.get_session_note(session_id, self._snapshot_key(path)) or ""
+            )
             diff = self._compute_diff(previous, new_content, path)
             diffs.append(diff or f"No changes detected in {file_path}\n")
         return "\n".join(diffs).strip()

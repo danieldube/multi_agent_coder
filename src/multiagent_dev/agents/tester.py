@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from multiagent_dev.execution.base import CodeExecutor
     from multiagent_dev.llm.base import LLMClient
     from multiagent_dev.memory.memory import MemoryService
+    from multiagent_dev.memory.retrieval import RetrievalService
     from multiagent_dev.orchestrator import Orchestrator
     from multiagent_dev.workspace.manager import WorkspaceManager
 
@@ -43,6 +44,7 @@ class TesterAgent(Agent):
         workspace: WorkspaceManager,
         executor: CodeExecutor,
         memory: MemoryService,
+        retrieval: RetrievalService,
         test_commands: list[list[str]] | None = None,
     ) -> None:
         """Initialize the tester agent.
@@ -55,6 +57,7 @@ class TesterAgent(Agent):
             workspace: Workspace manager for file operations.
             executor: Code execution engine.
             memory: Memory service for storing conversation data.
+            retrieval: Retrieval service for indexed project context.
             test_commands: Optional list of commands to execute.
         """
 
@@ -66,6 +69,7 @@ class TesterAgent(Agent):
             workspace=workspace,
             executor=executor,
             memory=memory,
+            retrieval=retrieval,
         )
         self._test_commands = test_commands or [["pytest", "-q"]]
 

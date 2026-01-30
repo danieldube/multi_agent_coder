@@ -38,7 +38,8 @@ class PlannerAgent(Agent):
             self._build_prompt(message.content)
         )
         plan = self._parse_plan(response)
-        self._memory.save_note(self._plan_key(message), plan.raw_text)
+        session_id = message.metadata.get("task_id", "default")
+        self._memory.save_session_note(session_id, self._plan_key(message), plan.raw_text)
 
         plan_text = self._format_steps(plan.steps)
         return [
@@ -75,9 +76,11 @@ class PlannerAgent(Agent):
         system_prompt = (
             "You are a planning agent. Break the task into clear, actionable steps."
         )
+        context = self._build_retrieval_context(task_description)
+        context_block = f"\n\nRelevant context:\n{context}" if context else ""
         user_prompt = (
             "Create an ordered list of steps to implement the following task:\n"
-            f"{task_description}"
+            f"{task_description}{context_block}"
         )
         return [
             {"role": "system", "content": system_prompt},
@@ -139,3 +142,22 @@ class PlannerAgent(Agent):
 
         task_id = message.metadata.get("task_id", "default")
         return f"plan:{task_id}"
+
+    def _build_retrieval_context(self, query: str) -> str:
+        """Retrieve indexed context relevant to the query.
+
+        Args:
+            query: Query text describing the task.
+
+        Returns:
+            Formatted retrieval context.
+        """
+
+        results = self._retrieval.query(query, limit=3)
+        if not results:
+            return ""
+        lines = []
+        for result in results:
+            snippet = result.chunk.content.strip().replace("\n", " ")
+            lines.append(f"- {result.chunk.path}: {snippet[:160]}")
+        return "\n".join(lines)

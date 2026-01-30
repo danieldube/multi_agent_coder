@@ -27,6 +27,7 @@ from multiagent_dev.execution.local_exec import LocalExecutor
 from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.llm.registry import create_llm_client
 from multiagent_dev.memory.memory import MemoryService
+from multiagent_dev.memory.retrieval import InMemoryRetrievalService, RetrievalService
 from multiagent_dev.orchestrator import Orchestrator, TaskResult, UserTask
 from multiagent_dev.tools.builtins import build_default_tool_registry
 from multiagent_dev.util.logging import get_logger
@@ -45,6 +46,7 @@ class RuntimeContext:
 
     orchestrator: Orchestrator
     memory: MemoryService
+    retrieval: RetrievalService
     workspace: WorkspaceManager
     executor: CodeExecutor
     llm_client: LLMClient
@@ -135,6 +137,7 @@ def build_runtime(
 
     workspace = WorkspaceManager(config.workspace_root, allow_write=allow_write)
     memory = MemoryService()
+    retrieval = InMemoryRetrievalService()
     llm = llm_client or create_llm_client(config.llm)
     executor_instance = executor or _build_executor(config)
     version_control = _build_version_control(config)
@@ -144,13 +147,22 @@ def build_runtime(
         version_control=version_control,
     )
     orchestrator = Orchestrator(memory, tool_registry)
-    agents = _build_agents(config.agents, orchestrator, workspace, executor_instance, memory, llm)
+    agents = _build_agents(
+        config.agents,
+        orchestrator,
+        workspace,
+        executor_instance,
+        memory,
+        retrieval,
+        llm,
+    )
     for agent in agents:
         orchestrator.register_agent(agent)
     _LOGGER.info("Runtime initialized with %s agents.", len(agents))
     return RuntimeContext(
         orchestrator=orchestrator,
         memory=memory,
+        retrieval=retrieval,
         workspace=workspace,
         executor=executor_instance,
         llm_client=llm,
@@ -185,6 +197,7 @@ def _build_agents(
     workspace: WorkspaceManager,
     executor: CodeExecutor,
     memory: MemoryService,
+    retrieval: RetrievalService,
     llm_client: LLMClient,
 ) -> list[Agent]:
     agents: list[Agent] = []
@@ -195,6 +208,7 @@ def _build_agents(
             workspace=workspace,
             executor=executor,
             memory=memory,
+            retrieval=retrieval,
             llm_client=llm_client,
         )
         agents.append(agent)
@@ -208,6 +222,7 @@ def _build_agent(
     workspace: WorkspaceManager,
     executor: CodeExecutor,
     memory: MemoryService,
+    retrieval: RetrievalService,
     llm_client: LLMClient,
 ) -> Agent:
     agent_type = agent_config.type.lower()
@@ -220,6 +235,7 @@ def _build_agent(
             workspace=workspace,
             executor=executor,
             memory=memory,
+            retrieval=retrieval,
         )
     if agent_type == "coder":
         return CodingAgent(
@@ -230,6 +246,7 @@ def _build_agent(
             workspace=workspace,
             executor=executor,
             memory=memory,
+            retrieval=retrieval,
         )
     if agent_type == "reviewer":
         return ReviewerAgent(
@@ -240,6 +257,7 @@ def _build_agent(
             workspace=workspace,
             executor=executor,
             memory=memory,
+            retrieval=retrieval,
         )
     if agent_type == "tester":
         return TesterAgent(
@@ -250,6 +268,7 @@ def _build_agent(
             workspace=workspace,
             executor=executor,
             memory=memory,
+            retrieval=retrieval,
             test_commands=agent_config.test_commands,
         )
     raise AppConfigError(f"Unknown agent type: {agent_config.type}")
