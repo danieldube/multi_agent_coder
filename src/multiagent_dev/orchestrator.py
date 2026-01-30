@@ -8,6 +8,8 @@ from dataclasses import dataclass, field
 
 from multiagent_dev.agents.base import Agent, AgentMessage
 from multiagent_dev.memory.memory import MemoryService
+from multiagent_dev.tools.base import ToolResult
+from multiagent_dev.tools.registry import ToolNotFoundError, ToolRegistry
 from multiagent_dev.util.logging import get_logger
 
 
@@ -50,15 +52,17 @@ class TaskResult:
 class Orchestrator:
     """Coordinates agents and routes messages between them."""
 
-    def __init__(self, memory: MemoryService) -> None:
+    def __init__(self, memory: MemoryService, tool_registry: ToolRegistry) -> None:
         """Initialize the orchestrator with shared services.
 
         Args:
             memory: Memory service for storing conversation history.
+            tool_registry: Registry of tools agents can invoke.
         """
 
         self._agents: dict[str, Agent] = {}
         self._memory = memory
+        self._tool_registry = tool_registry
         self._queue: deque[AgentMessage] = deque()
         self._logger = get_logger(self.__class__.__name__)
 
@@ -88,6 +92,40 @@ class Orchestrator:
         self._logger.debug(
             "Queued message from '%s' to '%s'.", message.sender, message.recipient
         )
+
+    def execute_tool(
+        self,
+        name: str,
+        arguments: dict[str, object],
+        *,
+        caller: str | None = None,
+    ) -> ToolResult:
+        """Execute a tool by name using the registered tool registry.
+
+        Args:
+            name: Name of the tool to execute.
+            arguments: Structured arguments for the tool.
+            caller: Optional agent identifier making the request.
+
+        Returns:
+            ToolResult produced by the tool.
+
+        Raises:
+            OrchestratorError: If the tool is not registered.
+        """
+
+        self._logger.info(
+            "Executing tool '%s' requested by '%s'.", name, caller or "unknown"
+        )
+        try:
+            result = self._tool_registry.execute(name, arguments)
+        except ToolNotFoundError as exc:
+            self._logger.error("Tool '%s' not found.", name)
+            raise OrchestratorError(str(exc)) from exc
+        self._logger.debug(
+            "Tool '%s' completed with success=%s.", result.name, result.success
+        )
+        return result
 
     def _dispatch(self, message: AgentMessage) -> Iterable[AgentMessage]:
         """Dispatch a message to the appropriate agent.

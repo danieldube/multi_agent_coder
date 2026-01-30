@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     from multiagent_dev.memory.memory import MemoryService
     from multiagent_dev.orchestrator import Orchestrator
     from multiagent_dev.workspace.manager import WorkspaceManager
+from multiagent_dev.tools.base import ToolResult
 
 
 @dataclass
@@ -86,3 +87,16 @@ class Agent(ABC):
         Returns:
             A list of new messages to enqueue via the orchestrator.
         """
+
+    def use_tool(self, name: str, arguments: dict[str, Any]) -> ToolResult:
+        """Request tool execution via the orchestrator.
+
+        Args:
+            name: Name of the tool to execute.
+            arguments: Structured arguments for the tool.
+
+        Returns:
+            ToolResult from the executed tool.
+        """
+
+        return self._orchestrator.execute_tool(name, arguments, caller=self.agent_id)

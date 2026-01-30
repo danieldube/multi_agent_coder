@@ -12,6 +12,7 @@ from multiagent_dev.execution.base import CodeExecutor, ExecutionResult
 from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.memory.memory import MemoryService
 from multiagent_dev.orchestrator import Orchestrator
+from multiagent_dev.tools.builtins import build_default_tool_registry
 from multiagent_dev.workspace.manager import WorkspaceManager
 
 
@@ -53,15 +54,17 @@ class FakeExecutor(CodeExecutor):
 def test_planner_agent_creates_plan_messages() -> None:
     memory = MemoryService()
     llm = FakeLLM(["1. Implement feature\n2. Run tests"])  # noqa: E501
-    orchestrator = Orchestrator(memory)
     workspace = WorkspaceManager(Path("."))
+    executor = FakeExecutor([])
+    tool_registry = build_default_tool_registry(workspace, executor)
+    orchestrator = Orchestrator(memory, tool_registry)
     agent = PlannerAgent(
         agent_id="planner",
         role="planner",
         llm_client=llm,
         orchestrator=orchestrator,
         workspace=workspace,
-        executor=cast(CodeExecutor, object()),
+        executor=executor,
         memory=memory,
     )
 
@@ -86,12 +89,14 @@ def test_coding_agent_writes_files_and_snapshots(tmp_path: Path) -> None:
         ]
     )
     workspace = WorkspaceManager(tmp_path)
-    executor = cast(CodeExecutor, object())
+    executor = FakeExecutor([])
+    tool_registry = build_default_tool_registry(workspace, executor)
+    orchestrator = Orchestrator(memory, tool_registry)
     agent = CodingAgent(
         agent_id="coder",
         role="coder",
         llm_client=llm,
-        orchestrator=cast(Orchestrator, object()),
+        orchestrator=orchestrator,
         workspace=workspace,
         executor=executor,
         memory=memory,
@@ -114,13 +119,16 @@ def test_coding_agent_requires_file_blocks(tmp_path: Path) -> None:
     memory = MemoryService()
     llm = FakeLLM(["No file updates here"])  # noqa: E501
     workspace = WorkspaceManager(tmp_path)
+    executor = FakeExecutor([])
+    tool_registry = build_default_tool_registry(workspace, executor)
+    orchestrator = Orchestrator(memory, tool_registry)
     agent = CodingAgent(
         agent_id="coder",
         role="coder",
         llm_client=llm,
-        orchestrator=cast(Orchestrator, object()),
+        orchestrator=orchestrator,
         workspace=workspace,
-        executor=cast(CodeExecutor, object()),
+        executor=executor,
         memory=memory,
     )
 
@@ -142,6 +150,9 @@ def test_reviewer_agent_approves_changes(tmp_path: Path) -> None:
     memory = MemoryService()
     llm = FakeLLM(["Approved. Looks good."])  # noqa: E501
     workspace = WorkspaceManager(tmp_path)
+    executor = FakeExecutor([])
+    tool_registry = build_default_tool_registry(workspace, executor)
+    orchestrator = Orchestrator(memory, tool_registry)
     file_path = tmp_path / "example.py"
     file_path.write_text("print('new')\n", encoding="utf-8")
     memory.save_note("file_snapshot:example.py", "print('old')\n")
@@ -150,9 +161,9 @@ def test_reviewer_agent_approves_changes(tmp_path: Path) -> None:
         agent_id="reviewer",
         role="reviewer",
         llm_client=llm,
-        orchestrator=cast(Orchestrator, object()),
+        orchestrator=orchestrator,
         workspace=workspace,
-        executor=cast(CodeExecutor, object()),
+        executor=executor,
         memory=memory,
     )
 
@@ -177,11 +188,13 @@ def test_tester_agent_runs_commands() -> None:
         ExecutionResult(command=["ruff"], stdout="", stderr="fail", exit_code=1, duration_s=0.2),
     ]
     executor = FakeExecutor(results)
+    tool_registry = build_default_tool_registry(workspace, executor)
+    orchestrator = Orchestrator(memory, tool_registry)
     agent = TesterAgent(
         agent_id="tester",
         role="tester",
         llm_client=llm,
-        orchestrator=cast(Orchestrator, object()),
+        orchestrator=orchestrator,
         workspace=workspace,
         executor=executor,
         memory=memory,

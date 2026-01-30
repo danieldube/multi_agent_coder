@@ -109,7 +109,20 @@ class TesterAgent(Agent):
 
         results: list[ExecutionResult] = []
         for command in self._test_commands:
-            results.append(self._executor.run(command))
+            tool_result = self.use_tool("run_command", {"command": command})
+            execution = tool_result.output
+            if isinstance(execution, ExecutionResult):
+                results.append(execution)
+            else:
+                results.append(
+                    ExecutionResult(
+                        command=command,
+                        stdout="",
+                        stderr=tool_result.error or "Tool execution failed",
+                        exit_code=1,
+                        duration_s=0.0,
+                    )
+                )
         succeeded = all(result.exit_code == 0 for result in results)
         return TestRunSummary(results=results, succeeded=succeeded)
 

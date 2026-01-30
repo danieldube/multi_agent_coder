@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from difflib import unified_diff
 from pathlib import Path
 
 from multiagent_dev.agents.base import Agent, AgentMessage
@@ -78,9 +79,9 @@ class ReviewerAgent(Agent):
         diffs: list[str] = []
         for file_path in file_paths:
             path = Path(file_path)
-            new_content = self._workspace.read_text(path)
+            new_content = self._read_file(path)
             previous = self._memory.get_note(self._snapshot_key(path)) or ""
-            diff = self._workspace.compute_unified_diff(previous, new_content, path)
+            diff = self._compute_diff(previous, new_content, path)
             diffs.append(diff or f"No changes detected in {file_path}\n")
         return "\n".join(diffs).strip()
 
@@ -132,3 +133,25 @@ class ReviewerAgent(Agent):
         """
 
         return f"file_snapshot:{path}"
+
+    def _read_file(self, path: Path) -> str:
+        """Read file contents via the tool registry."""
+
+        result = self.use_tool("read_file", {"path": str(path)})
+        if not result.success or not isinstance(result.output, dict):
+            return f"Unable to read {path}: {result.error or 'unknown error'}"
+        content = result.output.get("content")
+        if not isinstance(content, str):
+            return f"Unable to read {path}: invalid content"
+        return content
+
+    def _compute_diff(self, old: str, new: str, path: Path) -> str:
+        """Compute a unified diff for review output."""
+
+        diff = unified_diff(
+            old.splitlines(keepends=True),
+            new.splitlines(keepends=True),
+            fromfile=str(path),
+            tofile=str(path),
+        )
+        return "".join(diff)
