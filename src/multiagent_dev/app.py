@@ -13,6 +13,8 @@ from multiagent_dev.agents.coder import CodingAgent
 from multiagent_dev.agents.planner import PlannerAgent
 from multiagent_dev.agents.reviewer import ReviewerAgent
 from multiagent_dev.agents.tester import TesterAgent
+from multiagent_dev.agents.user_proxy import UserProxyAgent
+from multiagent_dev.approvals import ApprovalPolicy
 from multiagent_dev.config import (
     AgentConfig,
     AppConfig,
@@ -146,7 +148,13 @@ def build_runtime(
         executor_instance,
         version_control=version_control,
     )
-    orchestrator = Orchestrator(memory, tool_registry)
+    approval_policy = ApprovalPolicy(
+        mode=config.approvals.mode,
+        require_execution_approval=config.approvals.require_execution_approval,
+        require_commit_approval=config.approvals.require_commit_approval,
+        user_proxy_agent_id=config.approvals.user_proxy_agent_id,
+    )
+    orchestrator = Orchestrator(memory, tool_registry, approval_policy=approval_policy)
     agents = _build_agents(
         config.agents,
         orchestrator,
@@ -270,5 +278,16 @@ def _build_agent(
             memory=memory,
             retrieval=retrieval,
             test_commands=agent_config.test_commands,
+        )
+    if agent_type == "user_proxy":
+        return UserProxyAgent(
+            agent_id=agent_config.agent_id,
+            role=agent_config.role,
+            llm_client=llm_client,
+            orchestrator=orchestrator,
+            workspace=workspace,
+            executor=executor,
+            memory=memory,
+            retrieval=retrieval,
         )
     raise AppConfigError(f"Unknown agent type: {agent_config.type}")

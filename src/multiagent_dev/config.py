@@ -22,6 +22,7 @@ class AppConfig:
         version_control: Configuration for version control integration.
         agents: List of configured agents.
         test_commands: Commands to use for testing when not overridden.
+        approvals: Configuration for human approval checkpoints.
     """
 
     workspace_root: Path = Path(".")
@@ -32,6 +33,7 @@ class AppConfig:
     )
     agents: list[AgentConfig] = field(default_factory=lambda: default_agent_configs())
     test_commands: list[list[str]] = field(default_factory=lambda: list(DEFAULT_TEST_COMMANDS))
+    approvals: ApprovalConfig = field(default_factory=lambda: ApprovalConfig())
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,16 @@ class VersionControlConfig:
 
 
 @dataclass(frozen=True)
+class ApprovalConfig:
+    """Configuration for human-in-the-loop approvals."""
+
+    mode: str = "autonomous"
+    require_execution_approval: bool = False
+    require_commit_approval: bool = True
+    user_proxy_agent_id: str = "user_proxy"
+
+
+@dataclass(frozen=True)
 class AgentConfig:
     """Configuration for an individual agent."""
 
@@ -79,6 +91,7 @@ def default_agent_configs() -> list[AgentConfig]:
     """Return default agent configurations for the standard workflow."""
 
     return [
+        AgentConfig(agent_id="user_proxy", role="User proxy agent", type="user_proxy"),
         AgentConfig(agent_id="planner", role="Planner agent", type="planner"),
         AgentConfig(agent_id="coder", role="Coding agent", type="coder"),
         AgentConfig(agent_id="tester", role="Tester agent", type="tester"),
@@ -144,6 +157,12 @@ def config_to_dict(config: AppConfig) -> dict[str, Any]:
             for agent in config.agents
         ],
         "test_commands": config.test_commands,
+        "approvals": {
+            "mode": config.approvals.mode,
+            "require_execution_approval": config.approvals.require_execution_approval,
+            "require_commit_approval": config.approvals.require_commit_approval,
+            "user_proxy_agent_id": config.approvals.user_proxy_agent_id,
+        },
     }
 
 
@@ -219,6 +238,7 @@ def _parse_app_config(raw_data: dict[str, Any], base_path: Path) -> AppConfig:
     version_control_config = _parse_version_control_config(
         raw_data.get("version_control", {})
     )
+    approvals_config = _parse_approval_config(raw_data.get("approvals", {}))
     test_commands = _parse_test_commands(raw_data.get("test_commands", None))
     agents = _parse_agent_configs(raw_data.get("agents", None), test_commands)
 
@@ -231,6 +251,7 @@ def _parse_app_config(raw_data: dict[str, Any], base_path: Path) -> AppConfig:
         llm=llm_config,
         executor=executor_config,
         version_control=version_control_config,
+        approvals=approvals_config,
         agents=agents,
         test_commands=test_commands,
     )
@@ -271,6 +292,17 @@ def _parse_version_control_config(raw: Any) -> VersionControlConfig:
         enabled=bool(raw.get("enabled", False)),
         provider=str(raw.get("provider", "git")),
         git_binary=str(raw.get("git_binary", "git")),
+    )
+
+
+def _parse_approval_config(raw: Any) -> ApprovalConfig:
+    if not isinstance(raw, dict):
+        return ApprovalConfig()
+    return ApprovalConfig(
+        mode=str(raw.get("mode", "autonomous")),
+        require_execution_approval=bool(raw.get("require_execution_approval", False)),
+        require_commit_approval=bool(raw.get("require_commit_approval", True)),
+        user_proxy_agent_id=str(raw.get("user_proxy_agent_id", "user_proxy")),
     )
 
 
