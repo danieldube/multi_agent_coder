@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -91,6 +92,22 @@ class Agent(ABC):
         Returns:
             A list of new messages to enqueue via the orchestrator.
         """
+
+    async def handle_message_async(self, message: AgentMessage) -> list[AgentMessage]:
+        """Asynchronously process a message.
+
+        By default this delegates to the synchronous ``handle_message`` in a thread
+        to avoid blocking the orchestrator event loop. Agents may override this
+        method for true async behavior.
+
+        Args:
+            message: The incoming message from another agent.
+
+        Returns:
+            A list of new messages to enqueue via the orchestrator.
+        """
+
+        return await asyncio.to_thread(self.handle_message, message)
 
     def use_tool(self, name: str, arguments: dict[str, Any]) -> ToolResult:
         """Request tool execution via the orchestrator.
