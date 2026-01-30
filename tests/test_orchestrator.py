@@ -7,6 +7,7 @@ from multiagent_dev.execution.base import CodeExecutor
 from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.memory.memory import MemoryService
 from multiagent_dev.orchestrator import Orchestrator, OrchestratorError, UserTask
+from multiagent_dev.tools.registry import ToolRegistry
 from multiagent_dev.workspace.manager import WorkspaceManager
 
 
@@ -31,7 +32,7 @@ class StubAgent(Agent):
 
 def test_orchestrator_routes_messages() -> None:
     memory = MemoryService()
-    orchestrator = Orchestrator(memory)
+    orchestrator = Orchestrator(memory, ToolRegistry())
     responder = StubAgent(
         agent_id="responder",
         responses=[],
@@ -57,7 +58,7 @@ def test_orchestrator_routes_messages() -> None:
 
 def test_orchestrator_unknown_agent_raises() -> None:
     memory = MemoryService()
-    orchestrator = Orchestrator(memory)
+    orchestrator = Orchestrator(memory, ToolRegistry())
     task = UserTask(task_id="task-2", description="start", initial_agent_id="missing")
 
     try:

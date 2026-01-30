@@ -44,12 +44,24 @@ class CodingAgent(Agent):
         modified_files: list[str] = []
 
         for update in updates:
-            if self._workspace.file_exists(update.path):
-                previous = self._workspace.read_text(update.path)
-                self._memory.save_note(self._snapshot_key(update.path), previous)
+            exists = self.use_tool("file_exists", {"path": str(update.path)})
+            if not exists.success or not isinstance(exists.output, dict):
+                raise CodingAgentError(
+                    f"Failed to check file existence for {update.path}: {exists.error}"
+                )
+            if exists.output.get("exists"):
+                previous = self._read_file(update.path)
             else:
-                self._memory.save_note(self._snapshot_key(update.path), "")
-            self._workspace.write_text(update.path, update.content)
+                previous = ""
+            self._memory.save_note(self._snapshot_key(update.path), previous)
+            write_result = self.use_tool(
+                "write_file",
+                {"path": str(update.path), "content": update.content},
+            )
+            if not write_result.success:
+                raise CodingAgentError(
+                    f"Failed to write file {update.path}: {write_result.error}"
+                )
             modified_files.append(str(update.path))
 
         summary = "Updated files: " + ", ".join(modified_files)
@@ -79,7 +91,7 @@ class CodingAgent(Agent):
             Chat messages for the LLM.
         """
 
-        files = ", ".join(str(path) for path in self._workspace.list_files("*.py"))
+        files = ", ".join(self._list_python_files())
         system_prompt = (
             "You are a coding agent. Respond only with file updates using the "
             "format:\nFILE: path\nCODE:\n<full file content>"
@@ -145,3 +157,25 @@ class CodingAgent(Agent):
         """
 
         return f"file_snapshot:{path}"
+
+    def _list_python_files(self) -> list[str]:
+        """Retrieve a list of Python files in the workspace via tools."""
+
+        result = self.use_tool("list_files", {"pattern": "*.py"})
+        if not result.success or not isinstance(result.output, dict):
+            raise CodingAgentError(f"Failed to list files: {result.error}")
+        files = result.output.get("files")
+        if not isinstance(files, list):
+            raise CodingAgentError("Invalid list_files output format")
+        return [str(item) for item in files]
+
+    def _read_file(self, path: Path) -> str:
+        """Read file contents via tools."""
+
+        result = self.use_tool("read_file", {"path": str(path)})
+        if not result.success or not isinstance(result.output, dict):
+            raise CodingAgentError(f"Failed to read file {path}: {result.error}")
+        content = result.output.get("content")
+        if not isinstance(content, str):
+            raise CodingAgentError(f"Invalid read_file output for {path}")
+        return content

@@ -28,6 +28,7 @@ from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.llm.registry import create_llm_client
 from multiagent_dev.memory.memory import MemoryService
 from multiagent_dev.orchestrator import Orchestrator, TaskResult, UserTask
+from multiagent_dev.tools.builtins import build_default_tool_registry
 from multiagent_dev.util.logging import get_logger
 from multiagent_dev.workspace.manager import WorkspaceManager
 
@@ -133,7 +134,8 @@ def build_runtime(
     memory = MemoryService()
     llm = llm_client or create_llm_client(config.llm)
     executor_instance = executor or _build_executor(config)
-    orchestrator = Orchestrator(memory)
+    tool_registry = build_default_tool_registry(workspace, executor_instance)
+    orchestrator = Orchestrator(memory, tool_registry)
     agents = _build_agents(config.agents, orchestrator, workspace, executor_instance, memory, llm)
     for agent in agents:
         orchestrator.register_agent(agent)
