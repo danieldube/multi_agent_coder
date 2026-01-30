@@ -7,6 +7,7 @@ from difflib import unified_diff
 from pathlib import Path
 
 from multiagent_dev.agents.base import Agent, AgentMessage
+from multiagent_dev.orchestrator import OrchestratorError
 
 
 @dataclass(frozen=True)
@@ -76,6 +77,9 @@ class ReviewerAgent(Agent):
         """
 
         file_paths = message.metadata.get("files", [])
+        vcs_diff = self._try_collect_vcs_diff(file_paths)
+        if vcs_diff is not None:
+            return vcs_diff
         diffs: list[str] = []
         for file_path in file_paths:
             path = Path(file_path)
@@ -84,6 +88,20 @@ class ReviewerAgent(Agent):
             diff = self._compute_diff(previous, new_content, path)
             diffs.append(diff or f"No changes detected in {file_path}\n")
         return "\n".join(diffs).strip()
+
+    def _try_collect_vcs_diff(self, file_paths: list[str]) -> str | None:
+        """Attempt to collect diffs using the version control tool."""
+
+        try:
+            result = self.use_tool("vcs_diff", {"paths": file_paths or None})
+        except OrchestratorError:
+            return None
+        if not result.success or not isinstance(result.output, dict):
+            return None
+        diff_text = result.output.get("diff")
+        if isinstance(diff_text, str):
+            return diff_text
+        return None
 
     def _build_prompt(self, diff_text: str) -> list[dict[str, str]]:
         """Build the prompt for reviewing changes.

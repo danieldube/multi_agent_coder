@@ -9,7 +9,14 @@ from typing import Any
 from multiagent_dev.execution.base import CodeExecutor, ExecutionResult
 from multiagent_dev.tools.base import Tool, ToolExecutionError, ToolResult
 from multiagent_dev.tools.registry import ToolRegistry
+from multiagent_dev.tools.vcs import (
+    VCSBranchTool,
+    VCSCommitTool,
+    VCSDiffTool,
+    VCSStatusTool,
+)
 from multiagent_dev.workspace.manager import WorkspaceManager
+from multiagent_dev.version_control.base import VersionControlService
 
 
 @dataclass
@@ -180,12 +187,14 @@ class FileExistsTool(Tool):
 def build_default_tool_registry(
     workspace: WorkspaceManager,
     executor: CodeExecutor,
+    version_control: VersionControlService | None = None,
 ) -> ToolRegistry:
     """Create a registry pre-populated with built-in tools.
 
     Args:
         workspace: Workspace manager to back file tools.
         executor: Executor to back command execution.
+        version_control: Optional version control service for VCS tools.
 
     Returns:
         ToolRegistry with built-in tools registered.
@@ -197,4 +206,9 @@ def build_default_tool_registry(
     registry.register(WriteFileTool(workspace=workspace))
     registry.register(ListFilesTool(workspace=workspace))
     registry.register(FileExistsTool(workspace=workspace))
+    if version_control is not None:
+        registry.register(VCSStatusTool(service=version_control))
+        registry.register(VCSDiffTool(service=version_control))
+        registry.register(VCSCommitTool(service=version_control))
+        registry.register(VCSBranchTool(service=version_control))
     return registry
