@@ -7,6 +7,7 @@ def test_app_config_defaults() -> None:
     config = AppConfig()
     assert config.workspace_root == Path(".")
     assert config.executor.mode == "local"
+    assert config.version_control.enabled is False
     assert config.agents
 
 
@@ -29,6 +30,11 @@ docker_image = "python:3.11"
 id = "planner"
 type = "planner"
 role = "Planner agent"
+
+[tool.multiagent_dev.version_control]
+enabled = true
+provider = "git"
+git_binary = "git"
 """,
         encoding="utf-8",
     )
@@ -38,4 +44,5 @@ role = "Planner agent"
     assert config.workspace_root == (tmp_path / "workspace").resolve()
     assert config.llm.model == "unit-test-model"
     assert config.executor.mode == "docker"
+    assert config.version_control.enabled is True
     assert config.agents[0].agent_id == "planner"

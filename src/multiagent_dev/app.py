@@ -30,6 +30,8 @@ from multiagent_dev.memory.memory import MemoryService
 from multiagent_dev.orchestrator import Orchestrator, TaskResult, UserTask
 from multiagent_dev.tools.builtins import build_default_tool_registry
 from multiagent_dev.util.logging import get_logger
+from multiagent_dev.version_control.base import VersionControlService
+from multiagent_dev.version_control.git_service import GitService
 from multiagent_dev.workspace.manager import WorkspaceManager
 
 
@@ -46,6 +48,7 @@ class RuntimeContext:
     workspace: WorkspaceManager
     executor: CodeExecutor
     llm_client: LLMClient
+    version_control: VersionControlService | None
 
 
 _LOGGER = get_logger("multiagent_dev.app")
@@ -134,7 +137,12 @@ def build_runtime(
     memory = MemoryService()
     llm = llm_client or create_llm_client(config.llm)
     executor_instance = executor or _build_executor(config)
-    tool_registry = build_default_tool_registry(workspace, executor_instance)
+    version_control = _build_version_control(config)
+    tool_registry = build_default_tool_registry(
+        workspace,
+        executor_instance,
+        version_control=version_control,
+    )
     orchestrator = Orchestrator(memory, tool_registry)
     agents = _build_agents(config.agents, orchestrator, workspace, executor_instance, memory, llm)
     for agent in agents:
@@ -146,6 +154,7 @@ def build_runtime(
         workspace=workspace,
         executor=executor_instance,
         llm_client=llm,
+        version_control=version_control,
     )
 
 
@@ -156,6 +165,18 @@ def _build_executor(config: AppConfig) -> CodeExecutor:
     if mode == "docker":
         return DockerExecutor(config.workspace_root, config.executor.docker_image)
     raise AppConfigError(f"Unknown executor mode: {config.executor.mode}")
+
+
+def _build_version_control(config: AppConfig) -> VersionControlService | None:
+    if not config.version_control.enabled:
+        return None
+    provider = config.version_control.provider.lower()
+    if provider == "git":
+        return GitService(
+            config.workspace_root,
+            git_binary=config.version_control.git_binary,
+        )
+    raise AppConfigError(f"Unknown version control provider: {config.version_control.provider}")
 
 
 def _build_agents(

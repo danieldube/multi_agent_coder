@@ -19,6 +19,7 @@ class AppConfig:
         workspace_root: Root path of the workspace to operate on.
         llm: Configuration for the default LLM client.
         executor: Configuration for code execution.
+        version_control: Configuration for version control integration.
         agents: List of configured agents.
         test_commands: Commands to use for testing when not overridden.
     """
@@ -26,6 +27,9 @@ class AppConfig:
     workspace_root: Path = Path(".")
     llm: LLMConfig = field(default_factory=lambda: LLMConfig())
     executor: ExecutorConfig = field(default_factory=lambda: ExecutorConfig())
+    version_control: VersionControlConfig = field(
+        default_factory=lambda: VersionControlConfig()
+    )
     agents: list[AgentConfig] = field(default_factory=lambda: default_agent_configs())
     test_commands: list[list[str]] = field(default_factory=lambda: list(DEFAULT_TEST_COMMANDS))
 
@@ -50,6 +54,15 @@ class ExecutorConfig:
     docker_image: str = "python:3.11-slim"
     timeout_s: int | None = None
     env: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class VersionControlConfig:
+    """Configuration for version control integration."""
+
+    enabled: bool = False
+    provider: str = "git"
+    git_binary: str = "git"
 
 
 @dataclass(frozen=True)
@@ -115,6 +128,11 @@ def config_to_dict(config: AppConfig) -> dict[str, Any]:
             "docker_image": config.executor.docker_image,
             "timeout_s": config.executor.timeout_s,
             "env": dict(config.executor.env),
+        },
+        "version_control": {
+            "enabled": config.version_control.enabled,
+            "provider": config.version_control.provider,
+            "git_binary": config.version_control.git_binary,
         },
         "agents": [
             {
@@ -198,6 +216,9 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 def _parse_app_config(raw_data: dict[str, Any], base_path: Path) -> AppConfig:
     llm_config = _parse_llm_config(raw_data.get("llm", {}))
     executor_config = _parse_executor_config(raw_data.get("executor", {}))
+    version_control_config = _parse_version_control_config(
+        raw_data.get("version_control", {})
+    )
     test_commands = _parse_test_commands(raw_data.get("test_commands", None))
     agents = _parse_agent_configs(raw_data.get("agents", None), test_commands)
 
@@ -209,6 +230,7 @@ def _parse_app_config(raw_data: dict[str, Any], base_path: Path) -> AppConfig:
         workspace_root=workspace_root,
         llm=llm_config,
         executor=executor_config,
+        version_control=version_control_config,
         agents=agents,
         test_commands=test_commands,
     )
@@ -239,6 +261,16 @@ def _parse_executor_config(raw: Any) -> ExecutorConfig:
         docker_image=str(raw.get("docker_image", "python:3.11-slim")),
         timeout_s=_optional_int(raw.get("timeout_s")),
         env=env_map,
+    )
+
+
+def _parse_version_control_config(raw: Any) -> VersionControlConfig:
+    if not isinstance(raw, dict):
+        return VersionControlConfig()
+    return VersionControlConfig(
+        enabled=bool(raw.get("enabled", False)),
+        provider=str(raw.get("provider", "git")),
+        git_binary=str(raw.get("git_binary", "git")),
     )
 
 

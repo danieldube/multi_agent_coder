@@ -13,6 +13,13 @@ from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.memory.memory import MemoryService
 from multiagent_dev.orchestrator import Orchestrator
 from multiagent_dev.tools.builtins import build_default_tool_registry
+from multiagent_dev.version_control.base import (
+    VCSBranchResult,
+    VCSCommitResult,
+    VCSDiff,
+    VCSStatus,
+    VersionControlService,
+)
 from multiagent_dev.workspace.manager import WorkspaceManager
 
 
@@ -49,6 +56,23 @@ class FakeExecutor(CodeExecutor):
         if not self._results:
             raise AssertionError("No more fake execution results available")
         return self._results.pop(0)
+
+
+class FakeVersionControl(VersionControlService):
+    def __init__(self, diff_text: str) -> None:
+        self._diff_text = diff_text
+
+    def status(self) -> VCSStatus:
+        return VCSStatus(entries=[], clean=True)
+
+    def diff(self, paths: list[str] | None = None) -> VCSDiff:
+        return VCSDiff(diff=self._diff_text)
+
+    def commit(self, message: str, *, stage_all: bool = True) -> VCSCommitResult:
+        raise AssertionError("Commit should not be called in reviewer tests")
+
+    def create_branch(self, name: str, *, checkout: bool = True) -> VCSBranchResult:
+        raise AssertionError("Branch creation should not be called in reviewer tests")
 
 
 def test_planner_agent_creates_plan_messages() -> None:
@@ -177,6 +201,39 @@ def test_reviewer_agent_approves_changes(tmp_path: Path) -> None:
 
     assert responses[0].metadata["approved"] is True
     assert responses[0].recipient == "planner"
+
+
+def test_reviewer_agent_uses_vcs_diff(tmp_path: Path) -> None:
+    memory = MemoryService()
+    llm = FakeLLM(["Approved."])  # noqa: E501
+    workspace = WorkspaceManager(tmp_path)
+    executor = FakeExecutor([])
+    version_control = FakeVersionControl("diff --git a/file.py b/file.py")
+    tool_registry = build_default_tool_registry(
+        workspace, executor, version_control=version_control
+    )
+    orchestrator = Orchestrator(memory, tool_registry)
+
+    agent = ReviewerAgent(
+        agent_id="reviewer",
+        role="reviewer",
+        llm_client=llm,
+        orchestrator=orchestrator,
+        workspace=workspace,
+        executor=executor,
+        memory=memory,
+    )
+
+    message = AgentMessage(
+        sender="coder",
+        recipient="reviewer",
+        content="Please review",
+        metadata={"files": ["file.py"]},
+    )
+    agent.handle_message(message)
+
+    prompt = llm.calls[0][1]["content"]
+    assert "diff --git a/file.py b/file.py" in prompt
 
 
 def test_tester_agent_runs_commands() -> None:

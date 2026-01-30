@@ -5,6 +5,13 @@ from pathlib import Path
 from multiagent_dev.execution.base import CodeExecutor, ExecutionResult
 from multiagent_dev.tools.builtins import build_default_tool_registry
 from multiagent_dev.tools.registry import ToolNotFoundError, ToolRegistry
+from multiagent_dev.version_control.base import (
+    VCSBranchResult,
+    VCSCommitResult,
+    VCSDiff,
+    VCSStatus,
+    VersionControlService,
+)
 from multiagent_dev.workspace.manager import WorkspaceManager
 
 
@@ -26,6 +33,28 @@ class FakeExecutor(CodeExecutor):
         return self._results.pop(0)
 
 
+class FakeVersionControl(VersionControlService):
+    def __init__(self) -> None:
+        self.commits: list[str] = []
+        self.branches: list[str] = []
+        self.diff_calls: list[list[str] | None] = []
+
+    def status(self) -> VCSStatus:
+        return VCSStatus(entries=[" M file.py"], clean=False)
+
+    def diff(self, paths: list[str] | None = None) -> VCSDiff:
+        self.diff_calls.append(paths)
+        return VCSDiff(diff="diff --git a/file.py b/file.py")
+
+    def commit(self, message: str, *, stage_all: bool = True) -> VCSCommitResult:
+        self.commits.append(message)
+        return VCSCommitResult(commit_hash="abc123", message=message)
+
+    def create_branch(self, name: str, *, checkout: bool = True) -> VCSBranchResult:
+        self.branches.append(name)
+        return VCSBranchResult(branch_name=name)
+
+
 def test_tool_registry_registers_and_executes(tmp_path: Path) -> None:
     workspace = WorkspaceManager(tmp_path)
     results = [
@@ -38,7 +67,8 @@ def test_tool_registry_registers_and_executes(tmp_path: Path) -> None:
         )
     ]
     executor = FakeExecutor(results)
-    registry = build_default_tool_registry(workspace, executor)
+    version_control = FakeVersionControl()
+    registry = build_default_tool_registry(workspace, executor, version_control=version_control)
 
     write_result = registry.execute(
         "write_file", {"path": "notes.txt", "content": "hello"}
@@ -56,6 +86,22 @@ def test_tool_registry_registers_and_executes(tmp_path: Path) -> None:
     assert command_result.success is True
     assert executor.commands == [["echo", "hi"]]
 
+    diff_result = registry.execute("vcs_diff", {"paths": ["file.py"]})
+    assert diff_result.output == {"diff": "diff --git a/file.py b/file.py"}
+    assert version_control.diff_calls == [["file.py"]]
+
+    commit_result = registry.execute(
+        "vcs_commit",
+        {"message": "Add change", "approved": True, "approver": "reviewer"},
+    )
+    assert commit_result.success is True
+    assert commit_result.output == {
+        "commit_hash": "abc123",
+        "message": "Add change",
+        "approver": "reviewer",
+    }
+    assert version_control.commits == ["Add change"]
+
 
 def test_tool_registry_missing_tool_raises() -> None:
     registry = ToolRegistry()
@@ -66,3 +112,16 @@ def test_tool_registry_missing_tool_raises() -> None:
         assert "missing" in str(exc)
     else:
         raise AssertionError("Expected ToolNotFoundError")
+
+
+def test_vcs_commit_requires_approval(tmp_path: Path) -> None:
+    workspace = WorkspaceManager(tmp_path)
+    executor = FakeExecutor([])
+    version_control = FakeVersionControl()
+    registry = build_default_tool_registry(workspace, executor, version_control=version_control)
+
+    result = registry.execute("vcs_commit", {"message": "Nope", "approved": False})
+
+    assert result.success is False
+    assert "approval" in (result.error or "")
+    assert version_control.commits == []
