@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from multiagent_dev.agents.base import Agent, AgentMessage
 from multiagent_dev.approvals import ApprovalDecision, ApprovalPolicy, ApprovalRequest
@@ -50,6 +53,135 @@ class TaskResult:
     history: list[AgentMessage] = field(default_factory=list)
 
 
+@dataclass
+class WorkflowState:
+    """Serializable workflow state for persisting and resuming tasks.
+
+    Attributes:
+        task_id: Identifier for the task.
+        task_description: Description associated with the task.
+        initial_agent_id: Initial agent that received the first message.
+        pending_messages: Messages awaiting processing.
+        history: Messages that have been processed.
+        messages_processed: Count of messages processed so far.
+        approval_counter: Counter used for approval request IDs.
+        pending_approvals: Approvals currently awaiting a decision.
+    """
+
+    task_id: str
+    task_description: str
+    initial_agent_id: str
+    pending_messages: list[AgentMessage]
+    history: list[AgentMessage]
+    messages_processed: int
+    approval_counter: int
+    pending_approvals: dict[str, ApprovalRequest]
+
+    def to_dict(self) -> dict[str, object]:
+        """Return a JSON-serializable representation of the workflow state."""
+
+        return {
+            "task_id": self.task_id,
+            "task_description": self.task_description,
+            "initial_agent_id": self.initial_agent_id,
+            "pending_messages": [_message_to_dict(msg) for msg in self.pending_messages],
+            "history": [_message_to_dict(msg) for msg in self.history],
+            "messages_processed": self.messages_processed,
+            "approval_counter": self.approval_counter,
+            "pending_approvals": {
+                key: _approval_request_to_dict(value)
+                for key, value in self.pending_approvals.items()
+            },
+        }
+
+    @classmethod
+    def from_dict(cls, payload: dict[str, object]) -> WorkflowState:
+        """Build a workflow state from its serialized representation."""
+
+        pending = [
+            _message_from_dict(item)
+            for item in _expect_list(payload.get("pending_messages"))
+        ]
+        history = [
+            _message_from_dict(item) for item in _expect_list(payload.get("history"))
+        ]
+        approvals_payload = _expect_dict(payload.get("pending_approvals"))
+        pending_approvals = {
+            key: _approval_request_from_dict(value)
+            for key, value in approvals_payload.items()
+        }
+        return cls(
+            task_id=_expect_str(payload.get("task_id")),
+            task_description=_expect_str(payload.get("task_description")),
+            initial_agent_id=_expect_str(payload.get("initial_agent_id")),
+            pending_messages=pending,
+            history=history,
+            messages_processed=_expect_int(payload.get("messages_processed")),
+            approval_counter=_expect_int(payload.get("approval_counter")),
+            pending_approvals=pending_approvals,
+        )
+
+
+def _message_to_dict(message: AgentMessage) -> dict[str, object]:
+    return {
+        "sender": message.sender,
+        "recipient": message.recipient,
+        "content": message.content,
+        "metadata": dict(message.metadata),
+    }
+
+
+def _message_from_dict(payload: object) -> AgentMessage:
+    data = _expect_dict(payload)
+    return AgentMessage(
+        sender=_expect_str(data.get("sender")),
+        recipient=_expect_str(data.get("recipient")),
+        content=_expect_str(data.get("content")),
+        metadata=dict(_expect_dict(data.get("metadata"))),
+    )
+
+
+def _approval_request_to_dict(request: ApprovalRequest) -> dict[str, object]:
+    return {
+        "action": request.action,
+        "description": request.description,
+        "metadata": dict(request.metadata),
+    }
+
+
+def _approval_request_from_dict(payload: object) -> ApprovalRequest:
+    data = _expect_dict(payload)
+    return ApprovalRequest(
+        action=_expect_str(data.get("action")),
+        description=_expect_str(data.get("description")),
+        metadata=dict(_expect_dict(data.get("metadata"))),
+    )
+
+
+def _expect_str(value: object) -> str:
+    if not isinstance(value, str):
+        raise OrchestratorError("Serialized workflow state is missing a string value.")
+    return value
+
+
+def _expect_int(value: object) -> int:
+    if not isinstance(value, int):
+        raise OrchestratorError("Serialized workflow state is missing an integer value.")
+    return value
+
+
+def _expect_dict(value: object) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise OrchestratorError("Serialized workflow state is missing a dict value.")
+    return value
+
+
+def _expect_list(value: object) -> list[object]:
+    if not isinstance(value, list):
+        raise OrchestratorError("Serialized workflow state is missing a list value.")
+    return value
+
+
 class Orchestrator:
     """Coordinates agents and routes messages between them."""
 
@@ -75,6 +207,7 @@ class Orchestrator:
         self._pending_approvals: dict[str, ApprovalRequest] = {}
         self._approval_counter = 0
         self._logger = get_logger(self.__class__.__name__)
+        self._agent_locks: dict[str, asyncio.Lock] = {}
 
     def register_agent(self, agent: Agent) -> None:
         """Register an agent with the orchestrator.
@@ -269,37 +402,118 @@ class Orchestrator:
             raise OrchestratorError(f"Unknown agent: {message.recipient}")
         return agent.handle_message(message)
 
-    def run_task(self, task: UserTask, max_steps: int = 100) -> TaskResult:
-        """Run a task by processing messages until completion.
+    async def _dispatch_async(self, message: AgentMessage) -> list[AgentMessage]:
+        """Dispatch a message asynchronously, serializing access per agent."""
 
-        Args:
-            task: The user task to execute.
-            max_steps: Safety limit for message processing.
+        agent = self.get_agent(message.recipient)
+        if agent is None:
+            self._logger.error("Attempted to dispatch to unknown agent '%s'.", message.recipient)
+            raise OrchestratorError(f"Unknown agent: {message.recipient}")
+        lock = self._agent_locks.setdefault(message.recipient, asyncio.Lock())
+        async with lock:
+            return await agent.handle_message_async(message)
 
-        Returns:
-            Summary of the run including the message history.
-        """
-
+    def _build_initial_state(self, task: UserTask) -> WorkflowState:
         initial_message = AgentMessage(
             sender="user",
             recipient=task.initial_agent_id,
             content=task.description,
             metadata={"task_id": task.task_id},
         )
-        self.send_message(initial_message)
-        self._logger.info("Starting task '%s' with initial agent '%s'.", task.task_id, task.initial_agent_id)
-        history: list[AgentMessage] = []
-        processed = 0
+        return WorkflowState(
+            task_id=task.task_id,
+            task_description=task.description,
+            initial_agent_id=task.initial_agent_id,
+            pending_messages=[initial_message],
+            history=[],
+            messages_processed=0,
+            approval_counter=self._approval_counter,
+            pending_approvals=dict(self._pending_approvals),
+        )
+
+    def snapshot_state(
+        self, task: UserTask, history: list[AgentMessage], processed: int
+    ) -> WorkflowState:
+        """Create a serializable snapshot of the current workflow state."""
+
+        return WorkflowState(
+            task_id=task.task_id,
+            task_description=task.description,
+            initial_agent_id=task.initial_agent_id,
+            pending_messages=list(self._queue),
+            history=list(history),
+            messages_processed=processed,
+            approval_counter=self._approval_counter,
+            pending_approvals=dict(self._pending_approvals),
+        )
+
+    def save_state(self, state: WorkflowState, path: Path) -> None:
+        """Persist workflow state to disk as JSON."""
+
+        path.write_text(json.dumps(state.to_dict(), indent=2), encoding="utf-8")
+
+    def load_state(self, path: Path) -> WorkflowState:
+        """Load workflow state from disk."""
+
+        payload = json.loads(path.read_text(encoding="utf-8"))
+        if not isinstance(payload, dict):
+            raise OrchestratorError("Workflow state payload must be a JSON object.")
+        return WorkflowState.from_dict(payload)
+
+    async def run_task_async(
+        self,
+        task: UserTask,
+        max_steps: int = 100,
+        *,
+        state: WorkflowState | None = None,
+        checkpoint_path: Path | None = None,
+    ) -> TaskResult:
+        """Run a task asynchronously by processing messages until completion.
+
+        Args:
+            task: The user task to execute.
+            max_steps: Safety limit for message processing.
+            state: Optional workflow state for resuming a previous run.
+            checkpoint_path: Optional path to persist workflow state after each batch.
+
+        Returns:
+            Summary of the run including the message history.
+        """
+
+        workflow_state = state or self._build_initial_state(task)
+        if workflow_state.task_id != task.task_id:
+            raise OrchestratorError("Task ID does not match workflow state.")
+        if workflow_state.initial_agent_id != task.initial_agent_id:
+            raise OrchestratorError("Initial agent does not match workflow state.")
+        self._queue = deque(workflow_state.pending_messages)
+        history: list[AgentMessage] = list(workflow_state.history)
+        processed = workflow_state.messages_processed
+        self._pending_approvals = dict(workflow_state.pending_approvals)
+        self._approval_counter = workflow_state.approval_counter
+
+        self._logger.info(
+            "Starting task '%s' with initial agent '%s'.",
+            task.task_id,
+            task.initial_agent_id,
+        )
 
         while self._queue and processed < max_steps:
-            message = self._queue.popleft()
-            history.append(message)
-            self._memory.append_message(task.task_id, message)
-            responses = self._dispatch(message)
-            for response in responses:
-                response.metadata.setdefault("task_id", task.task_id)
-                self.send_message(response)
-            processed += 1
+            batch: list[AgentMessage] = []
+            while self._queue:
+                batch.append(self._queue.popleft())
+            for message in batch:
+                history.append(message)
+                self._memory.append_message(task.task_id, message)
+            results = await asyncio.gather(
+                *[self._dispatch_async(message) for message in batch]
+            )
+            for responses in results:
+                for response in responses:
+                    response.metadata.setdefault("task_id", task.task_id)
+                    self.send_message(response)
+            processed += len(batch)
+            if checkpoint_path is not None:
+                self.save_state(self.snapshot_state(task, history, processed), checkpoint_path)
 
         completed = not self._queue
         if completed:
@@ -314,3 +528,20 @@ class Orchestrator:
             messages_processed=processed,
             history=history,
         )
+
+    def resume_task(self, state: WorkflowState, max_steps: int = 100) -> TaskResult:
+        """Resume a task from a serialized workflow state."""
+
+        task = UserTask(
+            task_id=state.task_id,
+            description=state.task_description,
+            initial_agent_id=state.initial_agent_id,
+        )
+        return asyncio.run(
+            self.run_task_async(task, max_steps=max_steps, state=state)
+        )
+
+    def run_task(self, task: UserTask, max_steps: int = 100) -> TaskResult:
+        """Run a task by processing messages until completion."""
+
+        return asyncio.run(self.run_task_async(task, max_steps=max_steps))

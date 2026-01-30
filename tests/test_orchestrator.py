@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from typing import cast
 
 from multiagent_dev.agents.base import Agent, AgentMessage
@@ -144,3 +145,45 @@ def test_orchestrator_requires_approval_for_tool_execution() -> None:
 
     assert result.success is False
     assert "Approval rejected" in (result.error or "")
+
+
+def test_orchestrator_persists_and_resumes_state(tmp_path) -> None:
+    memory = MemoryService()
+    orchestrator = Orchestrator(memory, ToolRegistry())
+    responder = StubAgent(
+        agent_id="responder",
+        responses=[],
+    )
+    sender_response = AgentMessage(
+        sender="sender",
+        recipient="responder",
+        content="forwarded",
+    )
+    sender = StubAgent(agent_id="sender", responses=[sender_response])
+
+    orchestrator.register_agent(sender)
+    orchestrator.register_agent(responder)
+
+    task = UserTask(task_id="task-3", description="start", initial_agent_id="sender")
+    checkpoint_path = tmp_path / "state.json"
+
+    result = asyncio.run(
+        orchestrator.run_task_async(task, max_steps=1, checkpoint_path=checkpoint_path)
+    )
+
+    assert result.completed is False
+    assert checkpoint_path.exists()
+
+    state = orchestrator.load_state(checkpoint_path)
+    assert state.messages_processed == 1
+
+    resumed_orchestrator = Orchestrator(MemoryService(), ToolRegistry())
+    resumed_sender = StubAgent(agent_id="sender", responses=[sender_response])
+    resumed_responder = StubAgent(agent_id="responder", responses=[])
+    resumed_orchestrator.register_agent(resumed_sender)
+    resumed_orchestrator.register_agent(resumed_responder)
+
+    resumed_result = resumed_orchestrator.resume_task(state, max_steps=2)
+
+    assert resumed_result.completed is True
+    assert resumed_result.messages_processed == 2
