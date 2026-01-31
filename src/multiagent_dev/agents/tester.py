@@ -89,6 +89,13 @@ class TesterAgent(Agent):
             "succeeded": summary.succeeded,
             "results": [self._serialize_result(result) for result in summary.results],
         }
+        self.log_event(
+            "agent.tests_completed",
+            {
+                "task_id": message.metadata.get("task_id", "default"),
+                "succeeded": summary.succeeded,
+            },
+        )
         return [
             AgentMessage(
                 sender=self.agent_id,

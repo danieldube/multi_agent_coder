@@ -45,6 +45,13 @@ class ReviewerAgent(Agent):
             "approved": decision.approved,
             "comments": decision.comments,
         }
+        self.log_event(
+            "agent.review_completed",
+            {
+                "task_id": message.metadata.get("task_id", "default"),
+                "approved": decision.approved,
+            },
+        )
         messages = [
             AgentMessage(
                 sender=self.agent_id,

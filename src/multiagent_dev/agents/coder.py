@@ -70,6 +70,10 @@ class CodingAgent(Agent):
             modified_files.append(str(update.path))
             self._retrieval.index_text(str(update.path), update.content)
 
+        self.log_event(
+            "agent.code_applied",
+            {"task_id": session_id, "files": list(modified_files)},
+        )
         summary = "Updated files: " + ", ".join(modified_files)
         metadata = {"files": modified_files}
         return [

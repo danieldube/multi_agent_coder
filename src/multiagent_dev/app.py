@@ -33,6 +33,7 @@ from multiagent_dev.memory.retrieval import InMemoryRetrievalService, RetrievalS
 from multiagent_dev.orchestrator import Orchestrator, TaskResult, UserTask
 from multiagent_dev.tools.builtins import build_default_tool_registry
 from multiagent_dev.util.logging import get_logger
+from multiagent_dev.util.observability import ObservabilityManager, create_observability_manager
 from multiagent_dev.version_control.base import VersionControlService
 from multiagent_dev.version_control.git_service import GitService
 from multiagent_dev.workspace.manager import WorkspaceManager
@@ -53,6 +54,7 @@ class RuntimeContext:
     executor: CodeExecutor
     llm_client: LLMClient
     version_control: VersionControlService | None
+    observability: ObservabilityManager
 
 
 _LOGGER = get_logger("multiagent_dev.app")
@@ -140,7 +142,8 @@ def build_runtime(
     workspace = WorkspaceManager(config.workspace_root, allow_write=allow_write)
     memory = MemoryService()
     retrieval = InMemoryRetrievalService()
-    llm = llm_client or create_llm_client(config.llm)
+    observability = create_observability_manager()
+    llm = llm_client or create_llm_client(config.llm, observability=observability)
     executor_instance = executor or _build_executor(config)
     version_control = _build_version_control(config)
     tool_registry = build_default_tool_registry(
@@ -154,7 +157,12 @@ def build_runtime(
         require_commit_approval=config.approvals.require_commit_approval,
         user_proxy_agent_id=config.approvals.user_proxy_agent_id,
     )
-    orchestrator = Orchestrator(memory, tool_registry, approval_policy=approval_policy)
+    orchestrator = Orchestrator(
+        memory,
+        tool_registry,
+        approval_policy=approval_policy,
+        observability=observability,
+    )
     agents = _build_agents(
         config.agents,
         orchestrator,
@@ -175,6 +183,7 @@ def build_runtime(
         executor=executor_instance,
         llm_client=llm,
         version_control=version_control,
+        observability=observability,
     )
 
 

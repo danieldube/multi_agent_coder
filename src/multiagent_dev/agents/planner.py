@@ -42,6 +42,14 @@ class PlannerAgent(Agent):
         self._memory.save_session_note(session_id, self._plan_key(message), plan.raw_text)
 
         plan_text = self._format_steps(plan.steps)
+        self.log_event(
+            "agent.plan_created",
+            {
+                "task_id": session_id,
+                "step_count": len(plan.steps),
+                "steps": list(plan.steps),
+            },
+        )
         return [
             AgentMessage(
                 sender=self.agent_id,

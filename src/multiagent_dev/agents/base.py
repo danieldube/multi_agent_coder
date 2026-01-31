@@ -123,3 +123,16 @@ class Agent(ABC):
         return self._orchestrator.execute_tool_with_approval(
             name, arguments, caller=self.agent_id
         )
+
+    def log_event(self, event_type: str, payload: dict[str, Any]) -> None:
+        """Log a structured event via the orchestrator.
+
+        Args:
+            event_type: Machine-readable event name.
+            payload: Structured event data.
+        """
+
+        self._orchestrator.log_event(
+            event_type,
+            {"agent_id": self.agent_id, **payload},
+        )
