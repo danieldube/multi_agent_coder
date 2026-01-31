@@ -92,6 +92,30 @@ Some enterprises expose Copilot through an OpenAI-compatible API gateway. In tha
    export COPILOT_API_KEY="your-copilot-gateway-key"
    ```
 
+### GitHub Copilot LLM setup (device key authentication)
+
+You can also connect to GitHub Copilot directly by using its OpenAI-compatible API and
+authenticating via a GitHub OAuth device key.
+
+1. Generate a GitHub device key (device code) and authorize it for your account.
+2. Update `multiagent_dev.yaml` (or `pyproject.toml`) to use the GitHub Copilot provider:
+
+   ```yaml
+   llm:
+     provider: github-copilot
+     model: "gpt-4o-mini"
+     copilot_device_key: "${COPILOT_DEVICE_KEY}"
+   ```
+
+3. Export the device key (or set it via your secret store):
+
+   ```bash
+   export COPILOT_DEVICE_KEY="your-device-code"
+   ```
+
+> **Optional:** If you already have a GitHub OAuth token, you can set
+> `copilot_github_token` (or `COPILOT_GITHUB_TOKEN`) instead of using the device key.
+
 ## Usage
 
 Run a task against a workspace:

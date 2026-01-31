@@ -9,6 +9,7 @@ import pytest
 from multiagent_dev.config import LLMConfig
 from multiagent_dev.llm.base import LLMConfigurationError
 from multiagent_dev.llm.generic_client import AzureOpenAIClient, GenericOpenAICompatibleClient
+from multiagent_dev.llm.copilot_client import GitHubCopilotClient
 from multiagent_dev.llm.openai_client import OpenAIClient
 from multiagent_dev.llm.registry import create_llm_client
 from multiagent_dev.util.observability import MetricsCollector, ObservabilityManager, EventLogger
@@ -94,6 +95,15 @@ def test_create_llm_client_uses_azure_config() -> None:
     )
     client = create_llm_client(config)
     assert isinstance(client, AzureOpenAIClient)
+
+
+def test_create_llm_client_uses_copilot_config() -> None:
+    config = LLMConfig(
+        provider="copilot",
+        copilot_device_key="device-code",
+    )
+    client = create_llm_client(config)
+    assert isinstance(client, GitHubCopilotClient)
 
 
 def test_azure_client_requires_deployment() -> None:
