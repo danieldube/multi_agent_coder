@@ -208,6 +208,7 @@ def build_default_tool_registry(
     executor: CodeExecutor,
     version_control: VersionControlService | None = None,
     allow_exec: bool = True,
+    allow_write: bool = True,
 ) -> ToolRegistry:
     """Create a registry pre-populated with built-in tools.
 
@@ -216,6 +217,7 @@ def build_default_tool_registry(
         executor: Executor to back command execution.
         version_control: Optional version control service for VCS tools.
         allow_exec: Whether to register command execution tools.
+        allow_write: Whether to register tools that mutate workspace state.
 
     Returns:
         ToolRegistry with built-in tools registered.
@@ -225,12 +227,14 @@ def build_default_tool_registry(
     if allow_exec:
         registry.register(RunCommandTool(executor=executor, workspace=workspace))
     registry.register(ReadFileTool(workspace=workspace))
-    registry.register(WriteFileTool(workspace=workspace))
+    if allow_write:
+        registry.register(WriteFileTool(workspace=workspace))
     registry.register(ListFilesTool(workspace=workspace))
     registry.register(FileExistsTool(workspace=workspace))
     if version_control is not None:
         registry.register(VCSStatusTool(service=version_control))
         registry.register(VCSDiffTool(service=version_control))
-        registry.register(VCSCommitTool(service=version_control))
-        registry.register(VCSBranchTool(service=version_control))
+        if allow_write:
+            registry.register(VCSCommitTool(service=version_control))
+            registry.register(VCSBranchTool(service=version_control))
     return registry
