@@ -26,8 +26,9 @@ Create a configuration file in your repository:
 multiagent-dev init /path/to/your/repo
 ```
 
-The generated `multiagent_dev.yaml` is JSON-compatible. You can override defaults such
-as the LLM model or execution mode there.
+The generated `multiagent_dev.yaml` uses JSON-formatted YAML, and the loader also
+supports full YAML syntax via PyYAML. You can override defaults such as the LLM model
+or execution mode there.
 
 ### OpenAI-compatible LLM setup
 

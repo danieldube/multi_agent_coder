@@ -67,7 +67,8 @@ def initialize_config(workspace: Path) -> Path:
         workspace: Workspace directory where the config should be written.
 
     Returns:
-        Path to the generated configuration file.
+        Path to the generated configuration file. The generated YAML content is JSON-
+        formatted, but the loader supports full YAML syntax.
 
     Raises:
         AppConfigError: If the config file already exists.
