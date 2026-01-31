@@ -5,9 +5,12 @@ from __future__ import annotations
 from multiagent_dev.config import LLMConfig
 from multiagent_dev.llm.base import LLMClient
 from multiagent_dev.llm.openai_client import OpenAIClient
+from multiagent_dev.util.observability import ObservabilityManager
 
 
-def create_llm_client(config: LLMConfig) -> LLMClient:
+def create_llm_client(
+    config: LLMConfig, *, observability: ObservabilityManager | None = None
+) -> LLMClient:
     """Create an LLM client instance from configuration.
 
     Args:
@@ -28,5 +31,6 @@ def create_llm_client(config: LLMConfig) -> LLMClient:
             model=config.model,
             timeout_s=config.timeout_s,
             max_retries=config.max_retries,
+            observability=observability,
         )
     raise ValueError(f"Unknown LLM provider: {config.provider}")

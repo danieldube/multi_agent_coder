@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import time
 from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
@@ -12,9 +13,10 @@ from pathlib import Path
 from multiagent_dev.agents.base import Agent, AgentMessage
 from multiagent_dev.approvals import ApprovalDecision, ApprovalPolicy, ApprovalRequest
 from multiagent_dev.memory.memory import MemoryService
-from multiagent_dev.tools.base import ToolResult
+from multiagent_dev.tools.base import ToolExecutionError, ToolResult
 from multiagent_dev.tools.registry import ToolNotFoundError, ToolRegistry
 from multiagent_dev.util.logging import get_logger
+from multiagent_dev.util.observability import ObservabilityManager, create_observability_manager
 
 
 class OrchestratorError(RuntimeError):
@@ -190,6 +192,7 @@ class Orchestrator:
         memory: MemoryService,
         tool_registry: ToolRegistry,
         approval_policy: ApprovalPolicy | None = None,
+        observability: ObservabilityManager | None = None,
     ) -> None:
         """Initialize the orchestrator with shared services.
 
@@ -208,6 +211,7 @@ class Orchestrator:
         self._approval_counter = 0
         self._logger = get_logger(self.__class__.__name__)
         self._agent_locks: dict[str, asyncio.Lock] = {}
+        self._observability = observability or create_observability_manager()
 
     def register_agent(self, agent: Agent) -> None:
         """Register an agent with the orchestrator.
@@ -218,6 +222,10 @@ class Orchestrator:
 
         self._agents[agent.agent_id] = agent
         self._logger.info("Registered agent '%s' with role '%s'.", agent.agent_id, agent.role)
+        self._observability.log_event(
+            "agent.registered",
+            {"agent_id": agent.agent_id, "role": agent.role},
+        )
 
     def get_agent(self, agent_id: str) -> Agent | None:
         """Retrieve a registered agent by ID."""
@@ -235,6 +243,7 @@ class Orchestrator:
         self._logger.debug(
             "Queued message from '%s' to '%s'.", message.sender, message.recipient
         )
+        self._observability.metrics.increment("orchestrator.messages_queued", 1)
 
     def execute_tool(
         self,
@@ -264,15 +273,56 @@ class Orchestrator:
         self._logger.info(
             "Executing tool '%s' requested by '%s'.", name, caller or "unknown"
         )
+        start = time.perf_counter()
         try:
             result = self._tool_registry.execute(name, arguments)
         except ToolNotFoundError as exc:
             self._logger.error("Tool '%s' not found.", name)
+            self._observability.log_event(
+                "tool.execution_failed",
+                {"name": name, "caller": caller, "error": str(exc)},
+            )
             raise OrchestratorError(str(exc)) from exc
+        except ToolExecutionError as exc:
+            duration = time.perf_counter() - start
+            self._observability.metrics.increment("tool.executions", 1)
+            self._observability.metrics.record_duration("tool.execution_time", duration)
+            self._observability.log_event(
+                "tool.execution_failed",
+                {
+                    "name": name,
+                    "caller": caller,
+                    "error": str(exc),
+                    "duration_s": duration,
+                },
+            )
+            raise OrchestratorError(str(exc)) from exc
+        duration = time.perf_counter() - start
+        self._observability.metrics.increment("tool.executions", 1)
+        self._observability.metrics.record_duration("tool.execution_time", duration)
+        self._observability.log_event(
+            "tool.executed",
+            {
+                "name": name,
+                "caller": caller,
+                "success": result.success,
+                "duration_s": duration,
+            },
+        )
         self._logger.debug(
             "Tool '%s' completed with success=%s.", result.name, result.success
         )
         return result
+
+    def log_event(self, event_type: str, payload: dict[str, object]) -> None:
+        """Log a structured event via the observability manager."""
+
+        self._observability.log_event(event_type, payload)
+
+    def metrics_snapshot(self) -> dict[str, object]:
+        """Return the current metrics snapshot."""
+
+        return self._observability.metrics.snapshot()
 
     def request_approval(self, request: ApprovalRequest) -> ApprovalDecision:
         """Request human approval via the configured user proxy agent.
@@ -496,6 +546,11 @@ class Orchestrator:
             task.task_id,
             task.initial_agent_id,
         )
+        self._observability.log_event(
+            "orchestrator.task_started",
+            {"task_id": task.task_id, "initial_agent_id": task.initial_agent_id},
+        )
+        start = time.perf_counter()
 
         while self._queue and processed < max_steps:
             batch: list[AgentMessage] = []
@@ -504,6 +559,8 @@ class Orchestrator:
             for message in batch:
                 history.append(message)
                 self._memory.append_message(task.task_id, message)
+            self._observability.metrics.increment("orchestrator.batches", 1)
+            self._observability.metrics.increment("orchestrator.messages_processed", len(batch))
             results = await asyncio.gather(
                 *[self._dispatch_async(message) for message in batch]
             )
@@ -516,6 +573,17 @@ class Orchestrator:
                 self.save_state(self.snapshot_state(task, history, processed), checkpoint_path)
 
         completed = not self._queue
+        duration = time.perf_counter() - start
+        self._observability.metrics.record_duration("orchestrator.task_duration", duration)
+        self._observability.log_event(
+            "orchestrator.task_finished",
+            {
+                "task_id": task.task_id,
+                "completed": completed,
+                "messages_processed": processed,
+                "duration_s": duration,
+            },
+        )
         if completed:
             self._logger.info("Task '%s' completed after %s messages.", task.task_id, processed)
         else:

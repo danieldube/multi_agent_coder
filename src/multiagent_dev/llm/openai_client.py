@@ -11,6 +11,7 @@ import requests  # type: ignore[import-untyped]
 
 from multiagent_dev.llm.base import LLMClient, LLMClientError, LLMConfigurationError
 from multiagent_dev.util.logging import get_logger
+from multiagent_dev.util.observability import ObservabilityManager
 
 
 @dataclass(frozen=True)
@@ -36,6 +37,7 @@ class OpenAIClient(LLMClient):
         timeout_s: float = 30.0,
         max_retries: int = 2,
         session: requests.Session | None = None,
+        observability: ObservabilityManager | None = None,
     ) -> None:
         """Initialize the OpenAI client.
 
@@ -64,6 +66,7 @@ class OpenAIClient(LLMClient):
         )
         self._session = session or requests.Session()
         self._logger = get_logger(self.__class__.__name__)
+        self._observability = observability
 
     def complete_chat(
         self,
@@ -82,7 +85,40 @@ class OpenAIClient(LLMClient):
             payload["max_tokens"] = max_tokens
 
         self._logger.debug("Requesting chat completion with model '%s'.", self._config.model)
-        response_data = self._post("/chat/completions", payload)
+        start = time.perf_counter()
+        if self._observability:
+            self._observability.log_event(
+                "llm.chat_requested",
+                {
+                    "model": self._config.model,
+                    "message_count": len(messages),
+                    "temperature": temperature,
+                    "max_tokens": max_tokens,
+                },
+            )
+        try:
+            response_data = self._post("/chat/completions", payload)
+            usage = self._extract_usage(response_data)
+            duration = time.perf_counter() - start
+            if self._observability:
+                self._observability.metrics.record_duration("llm.chat_duration", duration)
+                if usage:
+                    self._observability.metrics.record_tokens(**usage)
+                self._observability.log_event(
+                    "llm.chat_completed",
+                    {
+                        "model": self._config.model,
+                        "duration_s": duration,
+                        "usage": usage or {},
+                    },
+                )
+        except Exception as exc:
+            if self._observability:
+                self._observability.log_event(
+                    "llm.chat_failed",
+                    {"model": self._config.model, "error": str(exc)},
+                )
+            raise
         try:
             content = response_data["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -130,3 +166,19 @@ class OpenAIClient(LLMClient):
     @staticmethod
     def _should_retry(status_code: int) -> bool:
         return status_code in {429, 500, 502, 503, 504}
+
+    @staticmethod
+    def _extract_usage(response_data: dict[str, Any]) -> dict[str, int] | None:
+        usage = response_data.get("usage")
+        if not isinstance(usage, dict):
+            return None
+        prompt_tokens = usage.get("prompt_tokens")
+        completion_tokens = usage.get("completion_tokens")
+        total_tokens = usage.get("total_tokens")
+        if not all(isinstance(value, int) for value in (prompt_tokens, completion_tokens, total_tokens)):
+            return None
+        return {
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "total_tokens": total_tokens,
+        }
