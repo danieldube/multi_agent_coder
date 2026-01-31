@@ -8,6 +8,7 @@ import pytest
 
 from multiagent_dev.config import LLMConfig
 from multiagent_dev.llm.base import LLMConfigurationError
+from multiagent_dev.llm.generic_client import AzureOpenAIClient, GenericOpenAICompatibleClient
 from multiagent_dev.llm.openai_client import OpenAIClient
 from multiagent_dev.llm.registry import create_llm_client
 from multiagent_dev.util.observability import MetricsCollector, ObservabilityManager, EventLogger
@@ -70,6 +71,48 @@ def test_create_llm_client_uses_openai_config(monkeypatch: pytest.MonkeyPatch) -
     config = LLMConfig(provider="openai", model="test-model")
     client = create_llm_client(config)
     assert isinstance(client, OpenAIClient)
+
+
+def test_create_llm_client_uses_openai_compatible_config() -> None:
+    config = LLMConfig(
+        provider="openai-compatible",
+        api_key="test-key",
+        base_url="https://example.test/v1",
+        model="test-model",
+    )
+    client = create_llm_client(config)
+    assert isinstance(client, GenericOpenAICompatibleClient)
+
+
+def test_create_llm_client_uses_azure_config() -> None:
+    config = LLMConfig(
+        provider="azure",
+        api_key="test-key",
+        base_url="https://azure.example.test",
+        azure_deployment="test-deployment",
+        api_version="2024-01-01",
+    )
+    client = create_llm_client(config)
+    assert isinstance(client, AzureOpenAIClient)
+
+
+def test_azure_client_requires_deployment() -> None:
+    with pytest.raises(LLMConfigurationError):
+        AzureOpenAIClient(
+            api_key="test-key",
+            base_url="https://azure.example.test",
+            azure_deployment=None,
+            api_version="2024-01-01",
+        )
+
+
+def test_openai_compatible_requires_base_url() -> None:
+    with pytest.raises(LLMConfigurationError):
+        GenericOpenAICompatibleClient(
+            api_key="test-key",
+            base_url=None,
+            model="test-model",
+        )
 
 
 def test_openai_client_records_usage_and_logs(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
