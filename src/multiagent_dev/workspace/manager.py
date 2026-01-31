@@ -101,6 +101,18 @@ class WorkspaceManager:
         )
         return "".join(diff)
 
+    def resolve_path(self, path: Path) -> Path:
+        """Resolve a path to an absolute path within the workspace.
+
+        Args:
+            path: File path to resolve.
+
+        Returns:
+            The resolved absolute path within the workspace.
+        """
+
+        return self._resolve_path(path)
+
     def _resolve_path(self, path: Path) -> Path:
         """Resolve a path to an absolute path within the workspace.
 

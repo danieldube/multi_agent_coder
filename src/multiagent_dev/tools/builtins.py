@@ -15,7 +15,7 @@ from multiagent_dev.tools.vcs import (
     VCSDiffTool,
     VCSStatusTool,
 )
-from multiagent_dev.workspace.manager import WorkspaceManager
+from multiagent_dev.workspace.manager import WorkspaceManager, WorkspacePathError
 from multiagent_dev.version_control.base import VersionControlService
 
 
@@ -24,6 +24,7 @@ class RunCommandTool(Tool):
     """Tool that executes shell commands via the configured executor."""
 
     executor: CodeExecutor
+    workspace: WorkspaceManager
 
     @property
     def name(self) -> str:  # noqa: D401 - short description
@@ -49,11 +50,29 @@ class RunCommandTool(Tool):
         cwd = arguments.get("cwd")
         timeout = arguments.get("timeout_s")
         env = arguments.get("env")
+        resolved_cwd: Path | None = None
+        if cwd is not None:
+            if not isinstance(cwd, str):
+                return ToolResult(
+                    name=self.name,
+                    success=False,
+                    output=None,
+                    error="'cwd' must be a string or null",
+                )
+            try:
+                resolved_cwd = self.workspace.resolve_path(Path(cwd))
+            except WorkspacePathError as exc:
+                return ToolResult(
+                    name=self.name,
+                    success=False,
+                    output=None,
+                    error=str(exc),
+                )
 
         try:
             result = self.executor.run(
                 command=command,
-                cwd=Path(cwd) if cwd else None,
+                cwd=resolved_cwd,
                 timeout_s=timeout,
                 env=env,
             )
@@ -204,7 +223,7 @@ def build_default_tool_registry(
 
     registry = ToolRegistry()
     if allow_exec:
-        registry.register(RunCommandTool(executor=executor))
+        registry.register(RunCommandTool(executor=executor, workspace=workspace))
     registry.register(ReadFileTool(workspace=workspace))
     registry.register(WriteFileTool(workspace=workspace))
     registry.register(ListFilesTool(workspace=workspace))
