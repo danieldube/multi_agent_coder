@@ -466,6 +466,46 @@ class Orchestrator:
         async with lock:
             return await agent.handle_message_async(message)
 
+    def _handle_dispatch_failure(
+        self,
+        message: AgentMessage,
+        exc: Exception,
+        task_id: str,
+    ) -> None:
+        self._logger.exception(
+            "Failed to dispatch message from '%s' to '%s'.",
+            message.sender,
+            message.recipient,
+        )
+        self._observability.metrics.increment("orchestrator.dispatch_failures", 1)
+        self._observability.log_event(
+            "orchestrator.dispatch_failed",
+            {
+                "task_id": task_id,
+                "sender": message.sender,
+                "recipient": message.recipient,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+            },
+        )
+        if self.get_agent("planner") is None:
+            return
+        fallback = AgentMessage(
+            sender="orchestrator",
+            recipient="planner",
+            content=(
+                "Dispatch error for message to "
+                f"'{message.recipient}': {type(exc).__name__}: {exc}"
+            ),
+            metadata={
+                "task_id": task_id,
+                "error_type": type(exc).__name__,
+                "error": str(exc),
+                "failed_message": _message_to_dict(message),
+            },
+        )
+        self.send_message(fallback)
+
     def _build_initial_state(self, task: UserTask) -> WorkflowState:
         metadata = {"task_id": task.task_id, **task.initial_metadata}
         initial_message = AgentMessage(
@@ -566,10 +606,14 @@ class Orchestrator:
             self._observability.metrics.increment("orchestrator.batches", 1)
             self._observability.metrics.increment("orchestrator.messages_processed", len(batch))
             results = await asyncio.gather(
-                *[self._dispatch_async(message) for message in batch]
+                *[self._dispatch_async(message) for message in batch],
+                return_exceptions=True,
             )
-            for responses in results:
-                for response in responses:
+            for message, result in zip(batch, results):
+                if isinstance(result, Exception):
+                    self._handle_dispatch_failure(message, result, task.task_id)
+                    continue
+                for response in result:
                     response.metadata.setdefault("task_id", task.task_id)
                     self.send_message(response)
             processed += len(batch)
