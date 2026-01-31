@@ -95,6 +95,8 @@ class LLMConfig:
     api_key: str | None = None
     base_url: str | None = None
     model: str | None = None
+    azure_deployment: str | None = None
+    api_version: str | None = None
     timeout_s: float = 30.0
     max_retries: int = 2
 
@@ -192,6 +194,8 @@ def config_to_dict(config: AppConfig) -> dict[str, Any]:
             "api_key": config.llm.api_key,
             "base_url": config.llm.base_url,
             "model": config.llm.model,
+            "azure_deployment": config.llm.azure_deployment,
+            "api_version": config.llm.api_version,
             "timeout_s": config.llm.timeout_s,
             "max_retries": config.llm.max_retries,
         },
@@ -329,6 +333,8 @@ def _parse_llm_config(raw: Any) -> LLMConfig:
         api_key=_optional_str(raw.get("api_key")),
         base_url=_optional_str(raw.get("base_url")),
         model=_optional_str(raw.get("model")),
+        azure_deployment=_optional_str(raw.get("azure_deployment")),
+        api_version=_optional_str(raw.get("api_version")),
         timeout_s=float(raw.get("timeout_s", 30.0)),
         max_retries=int(raw.get("max_retries", 2)),
     )

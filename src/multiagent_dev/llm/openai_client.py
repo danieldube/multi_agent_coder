@@ -3,29 +3,12 @@
 from __future__ import annotations
 
 import os
-import time
-from dataclasses import dataclass
-from typing import Any, cast
-
-import requests  # type: ignore[import-untyped]
-
-from multiagent_dev.llm.base import LLMClient, LLMClientError, LLMConfigurationError
-from multiagent_dev.util.logging import get_logger
+from multiagent_dev.llm.base import LLMConfigurationError
+from multiagent_dev.llm.generic_client import GenericOpenAICompatibleClient
 from multiagent_dev.util.observability import ObservabilityManager
 
 
-@dataclass(frozen=True)
-class OpenAIClientConfig:
-    """Configuration for the OpenAI-compatible client."""
-
-    api_key: str
-    base_url: str
-    model: str
-    timeout_s: float
-    max_retries: int
-
-
-class OpenAIClient(LLMClient):
+class OpenAIClient(GenericOpenAICompatibleClient):
     """LLM client for OpenAI-compatible HTTP APIs."""
 
     def __init__(
@@ -57,128 +40,12 @@ class OpenAIClient(LLMClient):
         resolved_base_url = base_url or os.getenv("OPENAI_BASE_URL") or "https://api.openai.com/v1"
         resolved_model = model or os.getenv("OPENAI_MODEL") or "gpt-4o-mini"
 
-        self._config = OpenAIClientConfig(
+        super().__init__(
             api_key=resolved_api_key,
-            base_url=resolved_base_url.rstrip("/"),
+            base_url=resolved_base_url,
             model=resolved_model,
             timeout_s=timeout_s,
             max_retries=max_retries,
+            session=session,
+            observability=observability,
         )
-        self._session = session or requests.Session()
-        self._logger = get_logger(self.__class__.__name__)
-        self._observability = observability
-
-    def complete_chat(
-        self,
-        messages: list[dict[str, str]],
-        temperature: float = 0.2,
-        max_tokens: int | None = None,
-    ) -> str:
-        """Generate a chat completion response."""
-
-        payload: dict[str, Any] = {
-            "model": self._config.model,
-            "messages": messages,
-            "temperature": temperature,
-        }
-        if max_tokens is not None:
-            payload["max_tokens"] = max_tokens
-
-        self._logger.debug("Requesting chat completion with model '%s'.", self._config.model)
-        start = time.perf_counter()
-        if self._observability:
-            self._observability.log_event(
-                "llm.chat_requested",
-                {
-                    "model": self._config.model,
-                    "message_count": len(messages),
-                    "temperature": temperature,
-                    "max_tokens": max_tokens,
-                },
-            )
-        try:
-            response_data = self._post("/chat/completions", payload)
-            usage = self._extract_usage(response_data)
-            duration = time.perf_counter() - start
-            if self._observability:
-                self._observability.metrics.record_duration("llm.chat_duration", duration)
-                if usage:
-                    self._observability.metrics.record_tokens(**usage)
-                self._observability.log_event(
-                    "llm.chat_completed",
-                    {
-                        "model": self._config.model,
-                        "duration_s": duration,
-                        "usage": usage or {},
-                    },
-                )
-        except Exception as exc:
-            if self._observability:
-                self._observability.log_event(
-                    "llm.chat_failed",
-                    {"model": self._config.model, "error": str(exc)},
-                )
-            raise
-        try:
-            content = response_data["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError) as exc:
-            raise LLMClientError("Unexpected response format from OpenAI API.") from exc
-        if not isinstance(content, str):
-            raise LLMClientError("Unexpected response format from OpenAI API.")
-        return content
-
-    def _post(self, path: str, payload: dict[str, Any]) -> dict[str, Any]:
-        url = f"{self._config.base_url}{path}"
-        headers = {"Authorization": f"Bearer {self._config.api_key}"}
-        last_error: Exception | None = None
-
-        for attempt in range(self._config.max_retries + 1):
-            try:
-                response = self._session.post(
-                    url,
-                    json=payload,
-                    headers=headers,
-                    timeout=self._config.timeout_s,
-                )
-                if response.status_code >= 400:
-                    if self._should_retry(response.status_code) and attempt < (
-                        self._config.max_retries
-                    ):
-                        time.sleep(0.5 * (attempt + 1))
-                        continue
-                    raise LLMClientError(
-                        "OpenAI API request failed with status "
-                        f"{response.status_code}: {response.text}"
-                    )
-                data = response.json()
-                if not isinstance(data, dict):
-                    raise LLMClientError("Unexpected response format from OpenAI API.")
-                return cast(dict[str, Any], data)
-            except requests.RequestException as exc:
-                last_error = exc
-                if attempt < self._config.max_retries:
-                    time.sleep(0.5 * (attempt + 1))
-                    continue
-                raise LLMClientError("OpenAI API request failed.") from exc
-
-        raise LLMClientError("OpenAI API request failed.") from last_error
-
-    @staticmethod
-    def _should_retry(status_code: int) -> bool:
-        return status_code in {429, 500, 502, 503, 504}
-
-    @staticmethod
-    def _extract_usage(response_data: dict[str, Any]) -> dict[str, int] | None:
-        usage = response_data.get("usage")
-        if not isinstance(usage, dict):
-            return None
-        prompt_tokens = usage.get("prompt_tokens")
-        completion_tokens = usage.get("completion_tokens")
-        total_tokens = usage.get("total_tokens")
-        if not all(isinstance(value, int) for value in (prompt_tokens, completion_tokens, total_tokens)):
-            return None
-        return {
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-            "total_tokens": total_tokens,
-        }
