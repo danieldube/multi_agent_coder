@@ -86,6 +86,40 @@ def test_docker_executor_rejects_external_cwd() -> None:
         raise AssertionError("Expected ValueError")
 
 
+def test_docker_executor_adds_user_flag(monkeypatch: Any) -> None:
+    calls: dict[str, Any] = {}
+
+    def fake_run(*args: Any, **kwargs: Any) -> subprocess.CompletedProcess[str]:
+        calls["args"] = args
+        return subprocess.CompletedProcess(args[0], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    workspace = Path("/repo")
+    executor = DockerExecutor(
+        workspace_root=workspace,
+        image="python:3.11-slim",
+        docker_user="1000:1000",
+    )
+    executor.run(["pytest", "-q"], cwd=workspace / "tests")
+
+    command = calls["args"][0]
+    expected_prefix = [
+        "docker",
+        "run",
+        "--rm",
+        "-v",
+        f"{workspace.resolve()}:/workspace",
+        "-w",
+        "/workspace/tests",
+        "--user",
+        "1000:1000",
+        "python:3.11-slim",
+    ]
+    assert command[: len(expected_prefix)] == expected_prefix
+    assert command[len(expected_prefix) :] == ["pytest", "-q"]
+
+
 def test_local_executor_merges_environment(monkeypatch: Any) -> None:
     calls: dict[str, Any] = {}
 
@@ -101,4 +135,3 @@ def test_local_executor_merges_environment(monkeypatch: Any) -> None:
     merged_env = calls["kwargs"]["env"]
     assert merged_env["EXTRA_ENV"] == "yes"
     assert os.environ.items() <= merged_env.items()
-

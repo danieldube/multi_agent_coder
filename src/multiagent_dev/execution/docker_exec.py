@@ -13,16 +13,23 @@ from multiagent_dev.util.logging import get_logger
 class DockerExecutor(CodeExecutor):
     """Execute commands inside a Docker container."""
 
-    def __init__(self, workspace_root: Path, image: str) -> None:
+    def __init__(
+        self,
+        workspace_root: Path,
+        image: str,
+        docker_user: str | None = None,
+    ) -> None:
         """Initialize the executor.
 
         Args:
             workspace_root: Root directory to bind-mount into the container.
             image: Docker image to run.
+            docker_user: Optional user (uid:gid) to run commands as.
         """
 
         self._workspace_root = workspace_root.resolve()
         self._image = image
+        self._docker_user = docker_user
         self._logger = get_logger(self.__class__.__name__)
 
     def run(
@@ -88,6 +95,8 @@ class DockerExecutor(CodeExecutor):
             "-w",
             container_cwd,
         ]
+        if self._docker_user:
+            docker_command.extend(["--user", self._docker_user])
         for key, value in (env or {}).items():
             docker_command.extend(["-e", f"{key}={value}"])
         docker_command.append(self._image)
