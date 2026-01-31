@@ -6,6 +6,7 @@ from multiagent_dev.config import AppConfig, load_config
 def test_app_config_defaults() -> None:
     config = AppConfig()
     assert config.workspace_root == Path(".")
+    assert config.project.languages == ["python"]
     assert config.executor.mode == "local"
     assert config.version_control.enabled is False
     assert config.agents
@@ -47,3 +48,30 @@ git_binary = "git"
     assert config.executor.mode == "docker"
     assert config.version_control.enabled is True
     assert any(agent.agent_id == "planner" for agent in config.agents)
+
+
+def test_project_config_drives_test_commands(tmp_path: Path) -> None:
+    config_path = tmp_path / "multiagent_dev.yaml"
+    config_path.write_text(
+        """
+{
+  "project": {
+    "languages": ["cpp", "python"],
+    "build_systems": ["cmake", "pip"],
+    "test_commands_by_language": {
+      "python": [["pytest", "-q", "--disable-warnings"]]
+    }
+  }
+}
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.project.languages == ["cpp", "python"]
+    assert config.project.build_systems == ["cmake", "pip"]
+    assert config.test_commands == [
+        ["ctest", "--output-on-failure"],
+        ["pytest", "-q", "--disable-warnings"],
+    ]

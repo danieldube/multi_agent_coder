@@ -12,11 +12,61 @@ DEFAULT_TEST_COMMANDS: list[list[str]] = [["pytest", "-q"]]
 
 
 @dataclass(frozen=True)
+class LanguageProfile:
+    """Represents default behaviors for a programming language.
+
+    Attributes:
+        name: Identifier for the language profile.
+        build_systems: Recommended build systems for the language.
+        test_commands: Default test commands for the language.
+    """
+
+    name: str
+    build_systems: list[str]
+    test_commands: list[list[str]]
+
+
+DEFAULT_LANGUAGE_PROFILES: dict[str, LanguageProfile] = {
+    "python": LanguageProfile(
+        name="python",
+        build_systems=["pip"],
+        test_commands=[["pytest", "-q"]],
+    ),
+    "cpp": LanguageProfile(
+        name="cpp",
+        build_systems=["cmake"],
+        test_commands=[["ctest", "--output-on-failure"]],
+    ),
+    "shell": LanguageProfile(
+        name="shell",
+        build_systems=["shell"],
+        test_commands=[["sh", "-c", "./test.sh"]],
+    ),
+}
+
+
+@dataclass(frozen=True)
+class ProjectConfig:
+    """Configuration describing the target project.
+
+    Attributes:
+        languages: Languages used in the project.
+        build_systems: Build systems associated with the project.
+        test_commands_by_language: Optional per-language test command overrides.
+    """
+
+    languages: list[str] = field(default_factory=lambda: ["python"])
+    build_systems: list[str] = field(default_factory=lambda: ["pip"])
+    test_commands_by_language: dict[str, list[list[str]]] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """Top-level configuration for the application.
 
     Attributes:
         workspace_root: Root path of the workspace to operate on.
+        project: Project configuration including languages and build systems.
         llm: Configuration for the default LLM client.
         executor: Configuration for code execution.
         version_control: Configuration for version control integration.
@@ -26,6 +76,7 @@ class AppConfig:
     """
 
     workspace_root: Path = Path(".")
+    project: ProjectConfig = field(default_factory=lambda: ProjectConfig())
     llm: LLMConfig = field(default_factory=lambda: LLMConfig())
     executor: ExecutorConfig = field(default_factory=lambda: ExecutorConfig())
     version_control: VersionControlConfig = field(
@@ -128,6 +179,14 @@ def config_to_dict(config: AppConfig) -> dict[str, Any]:
 
     return {
         "workspace_root": str(config.workspace_root),
+        "project": {
+            "languages": list(config.project.languages),
+            "build_systems": list(config.project.build_systems),
+            "test_commands_by_language": {
+                language: list(commands)
+                for language, commands in config.project.test_commands_by_language.items()
+            },
+        },
         "llm": {
             "provider": config.llm.provider,
             "api_key": config.llm.api_key,
@@ -233,13 +292,17 @@ def _load_yaml(path: Path) -> dict[str, Any]:
 
 
 def _parse_app_config(raw_data: dict[str, Any], base_path: Path) -> AppConfig:
+    project_config = _parse_project_config(raw_data.get("project", {}))
+    explicit_test_commands = _parse_test_commands_optional(
+        raw_data.get("test_commands", None)
+    )
     llm_config = _parse_llm_config(raw_data.get("llm", {}))
     executor_config = _parse_executor_config(raw_data.get("executor", {}))
     version_control_config = _parse_version_control_config(
         raw_data.get("version_control", {})
     )
     approvals_config = _parse_approval_config(raw_data.get("approvals", {}))
-    test_commands = _parse_test_commands(raw_data.get("test_commands", None))
+    test_commands = resolve_test_commands(project_config, explicit_test_commands)
     agents = _parse_agent_configs(raw_data.get("agents", None), test_commands)
 
     workspace_root = Path(raw_data.get("workspace_root", ".")) if raw_data else Path(".")
@@ -248,6 +311,7 @@ def _parse_app_config(raw_data: dict[str, Any], base_path: Path) -> AppConfig:
 
     return AppConfig(
         workspace_root=workspace_root,
+        project=project_config,
         llm=llm_config,
         executor=executor_config,
         version_control=version_control_config,
@@ -282,6 +346,25 @@ def _parse_executor_config(raw: Any) -> ExecutorConfig:
         docker_image=str(raw.get("docker_image", "python:3.11-slim")),
         timeout_s=_optional_int(raw.get("timeout_s")),
         env=env_map,
+    )
+
+
+def _parse_project_config(raw: Any) -> ProjectConfig:
+    if not isinstance(raw, dict):
+        return ProjectConfig()
+    languages = _parse_string_list(raw.get("languages"), default=["python"])
+    build_systems = _parse_string_list(raw.get("build_systems"), default=["pip"])
+    test_commands_by_language: dict[str, list[list[str]]] = {}
+    raw_test_commands = raw.get("test_commands_by_language", {})
+    if isinstance(raw_test_commands, dict):
+        for language, commands in raw_test_commands.items():
+            parsed = _parse_test_commands_optional(commands)
+            if parsed:
+                test_commands_by_language[str(language)] = parsed
+    return ProjectConfig(
+        languages=languages,
+        build_systems=build_systems,
+        test_commands_by_language=test_commands_by_language,
     )
 
 
@@ -323,7 +406,7 @@ def _parse_agent_configs(
         if not agent_id or not agent_type:
             raise ValueError("Agent definitions require 'id' and 'type'.")
         role = str(item.get("role", f"{agent_type.title()} agent"))
-        agent_test_commands = _parse_test_commands(item.get("test_commands", None))
+        agent_test_commands = _parse_test_commands_optional(item.get("test_commands", None))
         if not agent_test_commands:
             agent_test_commands = test_commands
         agents.append(
@@ -337,9 +420,9 @@ def _parse_agent_configs(
     return agents
 
 
-def _parse_test_commands(raw: Any) -> list[list[str]]:
+def _parse_test_commands_optional(raw: Any) -> list[list[str]] | None:
     if raw is None:
-        return list(DEFAULT_TEST_COMMANDS)
+        return None
     if not isinstance(raw, list):
         raise ValueError("test_commands must be a list of command lists.")
     commands: list[list[str]] = []
@@ -348,6 +431,45 @@ def _parse_test_commands(raw: Any) -> list[list[str]]:
             raise ValueError("Each test command must be a non-empty list.")
         commands.append([str(item) for item in entry])
     return commands
+
+
+def resolve_test_commands(
+    project_config: ProjectConfig,
+    explicit: list[list[str]] | None,
+) -> list[list[str]]:
+    """Resolve test commands based on project configuration.
+
+    Args:
+        project_config: Project-level configuration including languages.
+        explicit: Explicit test commands provided in configuration.
+
+    Returns:
+        List of resolved test commands.
+    """
+
+    if explicit is not None:
+        return explicit
+    commands: list[list[str]] = []
+    for language in project_config.languages:
+        language_commands = project_config.test_commands_by_language.get(language)
+        if language_commands:
+            commands.extend(language_commands)
+            continue
+        profile = DEFAULT_LANGUAGE_PROFILES.get(language)
+        if profile:
+            commands.extend(profile.test_commands)
+    if commands:
+        return commands
+    return list(DEFAULT_TEST_COMMANDS)
+
+
+def _parse_string_list(value: Any, *, default: list[str]) -> list[str]:
+    if value is None:
+        return list(default)
+    if not isinstance(value, list):
+        raise ValueError("Expected a list of strings.")
+    items = [str(item).strip() for item in value if str(item).strip()]
+    return items or list(default)
 
 
 def _optional_str(value: Any) -> str | None:
