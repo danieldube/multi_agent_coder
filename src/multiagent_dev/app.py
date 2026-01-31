@@ -243,6 +243,7 @@ def build_runtime(
         executor_instance,
         version_control=version_control,
         allow_exec=allow_exec,
+        allow_write=allow_write,
     )
     approval_policy = ApprovalPolicy(
         mode=config.approvals.mode,

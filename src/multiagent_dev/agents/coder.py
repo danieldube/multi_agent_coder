@@ -38,6 +38,29 @@ class CodingAgent(Agent):
             Messages for downstream agents indicating completion.
         """
 
+        if not self._workspace.allow_write:
+            summary = "Writes are disabled; the coding agent cannot apply updates."
+            session_id = message.metadata.get("task_id", "default")
+            self.log_event(
+                "agent.writes_disabled",
+                {"task_id": session_id},
+            )
+            metadata = {"writes_disabled": True}
+            return [
+                AgentMessage(
+                    sender=self.agent_id,
+                    recipient="reviewer",
+                    content=summary,
+                    metadata=metadata,
+                ),
+                AgentMessage(
+                    sender=self.agent_id,
+                    recipient="planner",
+                    content=summary,
+                    metadata=metadata,
+                ),
+            ]
+
         prompt = self._build_prompt(message.content)
         response = self._llm_client.complete_chat(prompt)
         updates = self._parse_updates(response)
