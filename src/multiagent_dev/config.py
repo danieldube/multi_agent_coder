@@ -99,6 +99,10 @@ class LLMConfig:
     model: str | None = None
     azure_deployment: str | None = None
     api_version: str | None = None
+    copilot_device_key: str | None = None
+    copilot_github_token: str | None = None
+    copilot_client_id: str | None = None
+    copilot_base_url: str | None = None
     timeout_s: float = 30.0
     max_retries: int = 2
 
@@ -199,6 +203,10 @@ def config_to_dict(config: AppConfig) -> dict[str, Any]:
             "model": config.llm.model,
             "azure_deployment": config.llm.azure_deployment,
             "api_version": config.llm.api_version,
+            "copilot_device_key": config.llm.copilot_device_key,
+            "copilot_github_token": config.llm.copilot_github_token,
+            "copilot_client_id": config.llm.copilot_client_id,
+            "copilot_base_url": config.llm.copilot_base_url,
             "timeout_s": config.llm.timeout_s,
             "max_retries": config.llm.max_retries,
         },
@@ -344,6 +352,10 @@ def _parse_llm_config(raw: Any) -> LLMConfig:
         model=_optional_str(raw.get("model")),
         azure_deployment=_optional_str(raw.get("azure_deployment")),
         api_version=_optional_str(raw.get("api_version")),
+        copilot_device_key=_optional_str(raw.get("copilot_device_key")),
+        copilot_github_token=_optional_str(raw.get("copilot_github_token")),
+        copilot_client_id=_optional_str(raw.get("copilot_client_id")),
+        copilot_base_url=_optional_str(raw.get("copilot_base_url")),
         timeout_s=float(raw.get("timeout_s", 30.0)),
         max_retries=int(raw.get("max_retries", 2)),
     )

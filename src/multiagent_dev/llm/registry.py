@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from multiagent_dev.config import LLMConfig
 from multiagent_dev.llm.base import LLMClient
+from multiagent_dev.llm.copilot_client import GitHubCopilotClient
 from multiagent_dev.llm.generic_client import AzureOpenAIClient, GenericOpenAICompatibleClient
 from multiagent_dev.llm.openai_client import OpenAIClient
 from multiagent_dev.util.observability import ObservabilityManager
@@ -50,6 +51,17 @@ def create_llm_client(
             model=config.model,
             azure_deployment=config.azure_deployment,
             api_version=config.api_version,
+            timeout_s=config.timeout_s,
+            max_retries=config.max_retries,
+            observability=observability,
+        )
+    if provider in {"github-copilot", "github_copilot", "copilot"}:
+        return GitHubCopilotClient(
+            device_key=config.copilot_device_key,
+            github_token=config.copilot_github_token,
+            client_id=config.copilot_client_id,
+            base_url=config.copilot_base_url,
+            model=config.model,
             timeout_s=config.timeout_s,
             max_retries=config.max_retries,
             observability=observability,
