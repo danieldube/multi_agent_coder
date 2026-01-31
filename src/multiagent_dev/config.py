@@ -109,6 +109,7 @@ class ExecutorConfig:
 
     mode: str = "local"
     docker_image: str = "python:3.11-slim"
+    docker_user: str | None = None
     timeout_s: int | None = None
     env: dict[str, str] = field(default_factory=dict)
 
@@ -204,6 +205,7 @@ def config_to_dict(config: AppConfig) -> dict[str, Any]:
         "executor": {
             "mode": config.executor.mode,
             "docker_image": config.executor.docker_image,
+            "docker_user": config.executor.docker_user,
             "timeout_s": config.executor.timeout_s,
             "env": dict(config.executor.env),
         },
@@ -357,6 +359,7 @@ def _parse_executor_config(raw: Any) -> ExecutorConfig:
     return ExecutorConfig(
         mode=str(raw.get("mode", "local")),
         docker_image=str(raw.get("docker_image", "python:3.11-slim")),
+        docker_user=_optional_str(raw.get("docker_user")),
         timeout_s=_optional_int(raw.get("timeout_s")),
         env=env_map,
     )

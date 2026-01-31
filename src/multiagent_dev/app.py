@@ -294,7 +294,11 @@ def _build_executor(config: AppConfig) -> CodeExecutor:
     if mode == "local":
         return LocalExecutor()
     if mode == "docker":
-        return DockerExecutor(config.workspace_root, config.executor.docker_image)
+        return DockerExecutor(
+            config.workspace_root,
+            config.executor.docker_image,
+            docker_user=config.executor.docker_user,
+        )
     raise AppConfigError(f"Unknown executor mode: {config.executor.mode}")
 
 
