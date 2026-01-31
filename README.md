@@ -40,6 +40,58 @@ export OPENAI_BASE_URL="https://api.openai.com/v1"
 export OPENAI_MODEL="gpt-4o-mini"
 ```
 
+### Microsoft Copilot LLM setup
+
+If your organization only allows Microsoft Copilot, configure the framework to use
+Copilot's Azure OpenAI-backed endpoint or your company's Copilot API gateway. The
+project supports two common patterns depending on how your Copilot license is provisioned:
+
+#### Option A: Copilot via Azure OpenAI (recommended when your org provisions Azure OpenAI)
+
+1. Ask your Microsoft/Copilot admin for the **Azure OpenAI endpoint**, **deployment name**,
+   **API version**, and **API key** (or set them in your CI secret store).
+2. Update `multiagent_dev.yaml` (or `pyproject.toml`) to use the Azure provider:
+
+   ```yaml
+   llm:
+     provider: azure
+     api_key: "${AZURE_OPENAI_API_KEY}"
+     base_url: "https://<your-resource-name>.openai.azure.com"
+     azure_deployment: "<your-copilot-deployment-name>"
+     api_version: "2024-02-15-preview"
+     model: "gpt-4o-mini"
+   ```
+
+3. Export the environment variables used above:
+
+   ```bash
+   export AZURE_OPENAI_API_KEY="your-azure-openai-key"
+   ```
+
+> **Note:** When using the `azure` provider, the `azure_deployment` and `api_version` fields
+> are required for requests to succeed.
+
+#### Option B: Copilot via an OpenAI-compatible gateway (if your org provides one)
+
+Some enterprises expose Copilot through an OpenAI-compatible API gateway. In that case:
+
+1. Ask your admin for the **gateway base URL**, **API key**, and **model name**.
+2. Configure the OpenAI-compatible provider:
+
+   ```yaml
+   llm:
+     provider: openai-compatible
+     api_key: "${COPILOT_API_KEY}"
+     base_url: "https://<your-copilot-gateway>/v1"
+     model: "<copilot-model-id>"
+   ```
+
+3. Export the environment variables used above:
+
+   ```bash
+   export COPILOT_API_KEY="your-copilot-gateway-key"
+   ```
+
 ## Usage
 
 Run a task against a workspace:
