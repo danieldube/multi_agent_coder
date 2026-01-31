@@ -34,9 +34,10 @@ class PlannerAgent(Agent):
             Messages to the coding, testing, and reviewing agents.
         """
 
-        response = self._llm_client.complete_chat(
-            self._build_prompt(message.content)
-        )
+        if message.metadata.get("plan_only_summary"):
+            return []
+
+        response = self._llm_client.complete_chat(self._build_prompt(message.content))
         plan = self._parse_plan(response)
         session_id = message.metadata.get("task_id", "default")
         self._memory.save_session_note(session_id, self._plan_key(message), plan.raw_text)
@@ -50,6 +51,19 @@ class PlannerAgent(Agent):
                 "steps": list(plan.steps),
             },
         )
+        if message.metadata.get("plan_only"):
+            return [
+                AgentMessage(
+                    sender=self.agent_id,
+                    recipient=self.agent_id,
+                    content=plan_text,
+                    metadata={
+                        "plan_only_summary": True,
+                        "steps": list(plan.steps),
+                    },
+                )
+            ]
+
         return [
             AgentMessage(
                 sender=self.agent_id,

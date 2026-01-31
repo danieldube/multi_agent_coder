@@ -9,6 +9,7 @@ from collections import deque
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 from multiagent_dev.agents.base import Agent, AgentMessage
 from multiagent_dev.approvals import ApprovalDecision, ApprovalPolicy, ApprovalRequest
@@ -31,11 +32,13 @@ class UserTask:
         task_id: Unique identifier for the task.
         description: The user-provided task description.
         initial_agent_id: Agent that should receive the first message.
+        initial_metadata: Metadata attached to the initial message.
     """
 
     task_id: str
     description: str
     initial_agent_id: str = "planner"
+    initial_metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -464,11 +467,12 @@ class Orchestrator:
             return await agent.handle_message_async(message)
 
     def _build_initial_state(self, task: UserTask) -> WorkflowState:
+        metadata = {"task_id": task.task_id, **task.initial_metadata}
         initial_message = AgentMessage(
             sender="user",
             recipient=task.initial_agent_id,
             content=task.description,
-            metadata={"task_id": task.task_id},
+            metadata=metadata,
         )
         return WorkflowState(
             task_id=task.task_id,

@@ -106,6 +106,74 @@ def run_task(
         TaskResult summarizing the orchestration run.
     """
 
+    runtime = _build_runtime_from_workspace(
+        workspace,
+        allow_write=allow_write,
+        execution_mode=execution_mode,
+    )
+    task = UserTask(task_id=str(uuid.uuid4()), description=description)
+    return runtime.orchestrator.run_task(task)
+
+
+def run_plan(
+    description: str,
+    workspace: Path,
+    allow_write: bool = True,
+    execution_mode: str | None = None,
+) -> tuple[TaskResult, str | None]:
+    """Generate a plan for the task without running implementation agents."""
+
+    runtime = _build_runtime_from_workspace(
+        workspace,
+        allow_write=allow_write,
+        execution_mode=execution_mode,
+    )
+    task = UserTask(
+        task_id=str(uuid.uuid4()),
+        description=description,
+        initial_agent_id="planner",
+        initial_metadata={"plan_only": True},
+    )
+    result = runtime.orchestrator.run_task(task)
+    plan_summary = next(
+        (
+            message.content
+            for message in result.history
+            if message.metadata.get("plan_only_summary")
+        ),
+        None,
+    )
+    return result, plan_summary
+
+
+def run_agent(
+    description: str,
+    workspace: Path,
+    agent_id: str,
+    allow_write: bool = True,
+    execution_mode: str | None = None,
+) -> TaskResult:
+    """Run a task starting from a specific agent."""
+
+    runtime = _build_runtime_from_workspace(
+        workspace,
+        allow_write=allow_write,
+        execution_mode=execution_mode,
+    )
+    task = UserTask(
+        task_id=str(uuid.uuid4()),
+        description=description,
+        initial_agent_id=agent_id,
+    )
+    return runtime.orchestrator.run_task(task)
+
+
+def _build_runtime_from_workspace(
+    workspace: Path,
+    *,
+    allow_write: bool,
+    execution_mode: str | None,
+) -> RuntimeContext:
     _LOGGER.info("Loading configuration from workspace %s", workspace)
     config = load_config(workspace)
     config = update_workspace_root(config, workspace.resolve())
@@ -115,9 +183,7 @@ def run_task(
     _LOGGER.info(
         "Starting task execution with execution mode '%s'.", config.executor.mode
     )
-    runtime = build_runtime(config, allow_write=allow_write)
-    task = UserTask(task_id=str(uuid.uuid4()), description=description)
-    return runtime.orchestrator.run_task(task)
+    return build_runtime(config, allow_write=allow_write)
 
 
 def build_runtime(
