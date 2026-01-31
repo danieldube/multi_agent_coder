@@ -1,5 +1,7 @@
 from pathlib import Path
 
+import pytest
+
 from multiagent_dev.config import AppConfig, load_config
 
 
@@ -75,3 +77,29 @@ def test_project_config_drives_test_commands(tmp_path: Path) -> None:
         ["ctest", "--output-on-failure"],
         ["pytest", "-q", "--disable-warnings"],
     ]
+
+
+def test_load_config_from_non_json_yaml(tmp_path: Path) -> None:
+    pytest.importorskip("yaml")
+    config_path = tmp_path / "multiagent_dev.yaml"
+    config_path.write_text(
+        """
+project:
+  languages:
+    - python
+  build_systems:
+    - pip
+llm:
+  model: yaml-model
+executor:
+  mode: docker
+""",
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.project.languages == ["python"]
+    assert config.project.build_systems == ["pip"]
+    assert config.llm.model == "yaml-model"
+    assert config.executor.mode == "docker"
