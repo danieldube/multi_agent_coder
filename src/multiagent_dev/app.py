@@ -92,7 +92,9 @@ def run_task(
     description: str,
     workspace: Path,
     allow_write: bool = True,
+    allow_exec: bool = True,
     execution_mode: str | None = None,
+    agent_profile: str | None = None,
 ) -> TaskResult:
     """Run a task description through the orchestrator workflow.
 
@@ -100,7 +102,9 @@ def run_task(
         description: User task description.
         workspace: Path to the workspace root.
         allow_write: Whether file writes are permitted.
+        allow_exec: Whether command execution tools are enabled.
         execution_mode: Optional override for the executor mode.
+        agent_profile: Optional agent profile name to select a subset of agents.
 
     Returns:
         TaskResult summarizing the orchestration run.
@@ -109,7 +113,9 @@ def run_task(
     runtime = _build_runtime_from_workspace(
         workspace,
         allow_write=allow_write,
+        allow_exec=allow_exec,
         execution_mode=execution_mode,
+        agent_profile=agent_profile,
     )
     task = UserTask(task_id=str(uuid.uuid4()), description=description)
     return runtime.orchestrator.run_task(task)
@@ -119,14 +125,18 @@ def run_plan(
     description: str,
     workspace: Path,
     allow_write: bool = True,
+    allow_exec: bool = True,
     execution_mode: str | None = None,
+    agent_profile: str | None = None,
 ) -> tuple[TaskResult, str | None]:
     """Generate a plan for the task without running implementation agents."""
 
     runtime = _build_runtime_from_workspace(
         workspace,
         allow_write=allow_write,
+        allow_exec=allow_exec,
         execution_mode=execution_mode,
+        agent_profile=agent_profile,
     )
     task = UserTask(
         task_id=str(uuid.uuid4()),
@@ -151,14 +161,18 @@ def run_agent(
     workspace: Path,
     agent_id: str,
     allow_write: bool = True,
+    allow_exec: bool = True,
     execution_mode: str | None = None,
+    agent_profile: str | None = None,
 ) -> TaskResult:
     """Run a task starting from a specific agent."""
 
     runtime = _build_runtime_from_workspace(
         workspace,
         allow_write=allow_write,
+        allow_exec=allow_exec,
         execution_mode=execution_mode,
+        agent_profile=agent_profile,
     )
     task = UserTask(
         task_id=str(uuid.uuid4()),
@@ -172,7 +186,9 @@ def _build_runtime_from_workspace(
     workspace: Path,
     *,
     allow_write: bool,
+    allow_exec: bool,
     execution_mode: str | None,
+    agent_profile: str | None,
 ) -> RuntimeContext:
     _LOGGER.info("Loading configuration from workspace %s", workspace)
     config = load_config(workspace)
@@ -183,13 +199,20 @@ def _build_runtime_from_workspace(
     _LOGGER.info(
         "Starting task execution with execution mode '%s'.", config.executor.mode
     )
-    return build_runtime(config, allow_write=allow_write)
+    return build_runtime(
+        config,
+        allow_write=allow_write,
+        allow_exec=allow_exec,
+        agent_profile=agent_profile,
+    )
 
 
 def build_runtime(
     config: AppConfig,
     *,
     allow_write: bool = True,
+    allow_exec: bool = True,
+    agent_profile: str | None = None,
     llm_client: LLMClient | None = None,
     executor: CodeExecutor | None = None,
 ) -> RuntimeContext:
@@ -198,6 +221,8 @@ def build_runtime(
     Args:
         config: Application configuration.
         allow_write: Whether workspace writes are allowed.
+        allow_exec: Whether command execution tools are enabled.
+        agent_profile: Optional profile name to filter configured agents.
         llm_client: Optional pre-built LLM client (for testing).
         executor: Optional pre-built executor (for testing).
 
@@ -216,6 +241,7 @@ def build_runtime(
         workspace,
         executor_instance,
         version_control=version_control,
+        allow_exec=allow_exec,
     )
     approval_policy = ApprovalPolicy(
         mode=config.approvals.mode,
@@ -229,8 +255,9 @@ def build_runtime(
         approval_policy=approval_policy,
         observability=observability,
     )
+    agent_configs = _select_agent_configs(config, agent_profile)
     agents = _build_agents(
-        config.agents,
+        agent_configs,
         orchestrator,
         workspace,
         executor_instance,
@@ -251,6 +278,15 @@ def build_runtime(
         version_control=version_control,
         observability=observability,
     )
+
+
+def _select_agent_configs(config: AppConfig, profile: str | None) -> list[AgentConfig]:
+    if profile is None:
+        return list(config.agents)
+    if profile not in config.agent_profiles:
+        raise AppConfigError(f"Unknown agent profile: {profile}")
+    selected_ids = set(config.agent_profiles[profile])
+    return [agent for agent in config.agents if agent.agent_id in selected_ids]
 
 
 def _build_executor(config: AppConfig) -> CodeExecutor:

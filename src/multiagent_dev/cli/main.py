@@ -53,10 +53,20 @@ def run_task_command(
         help="Path to the workspace root.",
     ),
     allow_write: bool = True,
+    allow_exec: bool = typer.Option(
+        True,
+        "--allow-exec/--no-allow-exec",
+        help="Allow agents to execute commands.",
+    ),
     execution_mode: str = typer.Option(
         "local",
         "--exec-mode",
         help="Execution mode: local|docker",
+    ),
+    agent_profile: str | None = typer.Option(
+        None,
+        "--agent-profile",
+        help="Agent profile name to select a subset of agents.",
     ),
 ) -> None:
     """Run a multi-agent workflow for the provided task description."""
@@ -66,7 +76,9 @@ def run_task_command(
             description=description,
             workspace=workspace,
             allow_write=allow_write,
+            allow_exec=allow_exec,
             execution_mode=execution_mode,
+            agent_profile=agent_profile,
         )
     except Exception as exc:
         typer.echo(f"Error: {exc}")
@@ -86,10 +98,20 @@ def plan_command(
         help="Path to the workspace root.",
     ),
     allow_write: bool = True,
+    allow_exec: bool = typer.Option(
+        True,
+        "--allow-exec/--no-allow-exec",
+        help="Allow agents to execute commands.",
+    ),
     execution_mode: str = typer.Option(
         "local",
         "--exec-mode",
         help="Execution mode: local|docker",
+    ),
+    agent_profile: str | None = typer.Option(
+        None,
+        "--agent-profile",
+        help="Agent profile name to select a subset of agents.",
     ),
 ) -> None:
     """Generate a plan for a task without executing it."""
@@ -99,7 +121,9 @@ def plan_command(
             description=description,
             workspace=workspace,
             allow_write=allow_write,
+            allow_exec=allow_exec,
             execution_mode=execution_mode,
+            agent_profile=agent_profile,
         )
     except Exception as exc:
         typer.echo(f"Error: {exc}")
@@ -123,10 +147,20 @@ def exec_command(
         help="Path to the workspace root.",
     ),
     allow_write: bool = True,
+    allow_exec: bool = typer.Option(
+        True,
+        "--allow-exec/--no-allow-exec",
+        help="Allow agents to execute commands.",
+    ),
     execution_mode: str = typer.Option(
         "local",
         "--exec-mode",
         help="Execution mode: local|docker",
+    ),
+    agent_profile: str | None = typer.Option(
+        None,
+        "--agent-profile",
+        help="Agent profile name to select a subset of agents.",
     ),
 ) -> None:
     """Execute a task starting from a specific agent."""
@@ -137,7 +171,9 @@ def exec_command(
             workspace=workspace,
             agent_id=agent_id,
             allow_write=allow_write,
+            allow_exec=allow_exec,
             execution_mode=execution_mode,
+            agent_profile=agent_profile,
         )
     except Exception as exc:
         typer.echo(f"Error: {exc}")

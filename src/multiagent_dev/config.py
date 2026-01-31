@@ -71,6 +71,7 @@ class AppConfig:
         executor: Configuration for code execution.
         version_control: Configuration for version control integration.
         agents: List of configured agents.
+        agent_profiles: Named subsets of agents for profile selection.
         test_commands: Commands to use for testing when not overridden.
         approvals: Configuration for human approval checkpoints.
     """
@@ -83,6 +84,7 @@ class AppConfig:
         default_factory=lambda: VersionControlConfig()
     )
     agents: list[AgentConfig] = field(default_factory=lambda: default_agent_configs())
+    agent_profiles: dict[str, list[str]] = field(default_factory=dict)
     test_commands: list[list[str]] = field(default_factory=lambda: list(DEFAULT_TEST_COMMANDS))
     approvals: ApprovalConfig = field(default_factory=lambda: ApprovalConfig())
 
@@ -219,6 +221,9 @@ def config_to_dict(config: AppConfig) -> dict[str, Any]:
             }
             for agent in config.agents
         ],
+        "agent_profiles": {
+            profile: list(agent_ids) for profile, agent_ids in config.agent_profiles.items()
+        },
         "test_commands": config.test_commands,
         "approvals": {
             "mode": config.approvals.mode,
@@ -308,6 +313,7 @@ def _parse_app_config(raw_data: dict[str, Any], base_path: Path) -> AppConfig:
     approvals_config = _parse_approval_config(raw_data.get("approvals", {}))
     test_commands = resolve_test_commands(project_config, explicit_test_commands)
     agents = _parse_agent_configs(raw_data.get("agents", None), test_commands)
+    agent_profiles = _parse_agent_profiles(raw_data.get("agent_profiles", None))
 
     workspace_root = Path(raw_data.get("workspace_root", ".")) if raw_data else Path(".")
     if not workspace_root.is_absolute():
@@ -321,6 +327,7 @@ def _parse_app_config(raw_data: dict[str, Any], base_path: Path) -> AppConfig:
         version_control=version_control_config,
         approvals=approvals_config,
         agents=agents,
+        agent_profiles=agent_profiles,
         test_commands=test_commands,
     )
 
@@ -424,6 +431,21 @@ def _parse_agent_configs(
             )
         )
     return agents
+
+
+def _parse_agent_profiles(raw: Any) -> dict[str, list[str]]:
+    if raw is None:
+        return {}
+    if not isinstance(raw, dict):
+        raise ValueError("agent_profiles must be a mapping of profile names to agent lists.")
+    parsed: dict[str, list[str]] = {}
+    for profile_name, agent_ids in raw.items():
+        if not isinstance(agent_ids, list):
+            raise ValueError("agent_profiles entries must be lists of agent ids.")
+        cleaned_ids = [str(agent_id).strip() for agent_id in agent_ids if str(agent_id).strip()]
+        if cleaned_ids:
+            parsed[str(profile_name)] = cleaned_ids
+    return parsed
 
 
 def _parse_test_commands_optional(raw: Any) -> list[list[str]] | None:
