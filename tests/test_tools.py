@@ -125,3 +125,16 @@ def test_vcs_commit_requires_approval(tmp_path: Path) -> None:
     assert result.success is False
     assert "approval" in (result.error or "")
     assert version_control.commits == []
+
+
+def test_run_command_tool_disabled_when_exec_not_allowed(tmp_path: Path) -> None:
+    workspace = WorkspaceManager(tmp_path)
+    executor = FakeExecutor([])
+    registry = build_default_tool_registry(workspace, executor, allow_exec=False)
+
+    try:
+        registry.execute("run_command", {"command": ["echo", "blocked"]})
+    except ToolNotFoundError as exc:
+        assert "run_command" in str(exc)
+    else:
+        raise AssertionError("Expected ToolNotFoundError for run_command")

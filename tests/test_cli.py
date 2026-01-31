@@ -26,17 +26,36 @@ def test_cli_plan_command_invokes_run_plan(monkeypatch: object) -> None:
     captured: dict[str, object] = {}
 
     def fake_run_plan(
-        *, description: str, workspace: Path, allow_write: bool, execution_mode: str
+        *,
+        description: str,
+        workspace: Path,
+        allow_write: bool,
+        allow_exec: bool,
+        execution_mode: str,
+        agent_profile: str | None,
     ) -> tuple[TaskResult, str]:
         captured["description"] = description
         captured["workspace"] = workspace
         captured["allow_write"] = allow_write
+        captured["allow_exec"] = allow_exec
         captured["execution_mode"] = execution_mode
+        captured["agent_profile"] = agent_profile
         return TaskResult(task_id="task-1", completed=True, messages_processed=2), "Step 1"
 
     monkeypatch.setattr("multiagent_dev.cli.main.run_plan", fake_run_plan)
 
-    result = runner.invoke(app, ["plan", "Do the thing", "--exec-mode", "local"])
+    result = runner.invoke(
+        app,
+        [
+            "plan",
+            "Do the thing",
+            "--exec-mode",
+            "local",
+            "--no-allow-exec",
+            "--agent-profile",
+            "core",
+        ],
+    )
 
     assert result.exit_code == 0
     assert "Plan summary:" in result.output
@@ -44,6 +63,8 @@ def test_cli_plan_command_invokes_run_plan(monkeypatch: object) -> None:
     assert "Task task-1 completed after 2 steps." in result.output
     assert captured["description"] == "Do the thing"
     assert captured["execution_mode"] == "local"
+    assert captured["allow_exec"] is False
+    assert captured["agent_profile"] == "core"
 
 
 def test_cli_exec_command_invokes_run_agent(monkeypatch: object) -> None:
@@ -51,24 +72,47 @@ def test_cli_exec_command_invokes_run_agent(monkeypatch: object) -> None:
     captured: dict[str, object] = {}
 
     def fake_run_agent(
-        *, description: str, workspace: Path, agent_id: str, allow_write: bool, execution_mode: str
+        *,
+        description: str,
+        workspace: Path,
+        agent_id: str,
+        allow_write: bool,
+        allow_exec: bool,
+        execution_mode: str,
+        agent_profile: str | None,
     ) -> TaskResult:
         captured["description"] = description
         captured["workspace"] = workspace
         captured["agent_id"] = agent_id
         captured["allow_write"] = allow_write
+        captured["allow_exec"] = allow_exec
         captured["execution_mode"] = execution_mode
+        captured["agent_profile"] = agent_profile
         return TaskResult(task_id="task-2", completed=False, messages_processed=1)
 
     monkeypatch.setattr("multiagent_dev.cli.main.run_agent", fake_run_agent)
 
-    result = runner.invoke(app, ["exec", "planner", "Run it", "--exec-mode", "docker"])
+    result = runner.invoke(
+        app,
+        [
+            "exec",
+            "planner",
+            "Run it",
+            "--exec-mode",
+            "docker",
+            "--no-allow-exec",
+            "--agent-profile",
+            "full",
+        ],
+    )
 
     assert result.exit_code == 0
     assert "Task task-2 incomplete after 1 steps." in result.output
     assert captured["agent_id"] == "planner"
     assert captured["description"] == "Run it"
     assert captured["execution_mode"] == "docker"
+    assert captured["allow_exec"] is False
+    assert captured["agent_profile"] == "full"
 
 
 def test_plan_only_returns_summary_message(tmp_path: Path) -> None:
@@ -132,3 +176,21 @@ def test_plan_only_returns_summary_message(tmp_path: Path) -> None:
     assert responses[0].recipient == "planner"
     assert responses[0].metadata["plan_only_summary"] is True
     assert responses[0].content == "- 1. Step one\n- 2. Step two"
+
+
+def test_agent_profile_filters_agents() -> None:
+    from multiagent_dev.app import _select_agent_configs
+    from multiagent_dev.config import AgentConfig, AppConfig
+
+    config = AppConfig(
+        agents=[
+            AgentConfig(agent_id="planner", role="Planner", type="planner"),
+            AgentConfig(agent_id="coder", role="Coder", type="coder"),
+            AgentConfig(agent_id="tester", role="Tester", type="tester"),
+        ],
+        agent_profiles={"core": ["planner", "coder"]},
+    )
+
+    selected = _select_agent_configs(config, "core")
+
+    assert [agent.agent_id for agent in selected] == ["planner", "coder"]
