@@ -471,7 +471,7 @@ class Orchestrator:
         message: AgentMessage,
         exc: Exception,
         task_id: str,
-    ) -> None:
+    ) -> OrchestratorError | None:
         self._logger.exception(
             "Failed to dispatch message from '%s' to '%s'.",
             message.sender,
@@ -489,7 +489,7 @@ class Orchestrator:
             },
         )
         if self.get_agent("planner") is None:
-            return
+            return self._maybe_raise_dispatch_error(exc)
         fallback = AgentMessage(
             sender="orchestrator",
             recipient="planner",
@@ -505,6 +505,14 @@ class Orchestrator:
             },
         )
         self.send_message(fallback)
+        return self._maybe_raise_dispatch_error(exc)
+
+    def _maybe_raise_dispatch_error(
+        self, exc: Exception
+    ) -> OrchestratorError | None:
+        if isinstance(exc, OrchestratorError) and "Unknown agent" in str(exc):
+            return exc
+        return None
 
     def _build_initial_state(self, task: UserTask) -> WorkflowState:
         metadata = {"task_id": task.task_id, **task.initial_metadata}
@@ -609,13 +617,19 @@ class Orchestrator:
                 *[self._dispatch_async(message) for message in batch],
                 return_exceptions=True,
             )
+            fatal_error: OrchestratorError | None = None
             for message, result in zip(batch, results):
                 if isinstance(result, Exception):
-                    self._handle_dispatch_failure(message, result, task.task_id)
+                    fatal_error = (
+                        fatal_error
+                        or self._handle_dispatch_failure(message, result, task.task_id)
+                    )
                     continue
                 for response in result:
                     response.metadata.setdefault("task_id", task.task_id)
                     self.send_message(response)
+            if fatal_error is not None:
+                raise fatal_error
             processed += len(batch)
             if checkpoint_path is not None:
                 self.save_state(self.snapshot_state(task, history, processed), checkpoint_path)
