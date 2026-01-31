@@ -101,14 +101,14 @@ class CodingAgent(Agent):
             Chat messages for the LLM.
         """
 
-        files = ", ".join(self._list_python_files())
+        files = ", ".join(self._list_workspace_files())
         system_prompt = (
             "You are a coding agent. Respond only with file updates using the "
             "format:\nFILE: path\nCODE:\n<full file content>"
         )
         user_prompt = (
             f"Instruction: {instruction}\n"
-            f"Existing Python files: {files}\n"
+            f"Existing workspace files: {files}\n"
             "Provide full file contents for any files you modify."
         )
         return [
@@ -168,10 +168,10 @@ class CodingAgent(Agent):
 
         return f"file_snapshot:{path}"
 
-    def _list_python_files(self) -> list[str]:
-        """Retrieve a list of Python files in the workspace via tools."""
+    def _list_workspace_files(self) -> list[str]:
+        """Retrieve a list of files in the workspace via tools."""
 
-        result = self.use_tool("list_files", {"pattern": "*.py"})
+        result = self.use_tool("list_files", {})
         if not result.success or not isinstance(result.output, dict):
             raise CodingAgentError(f"Failed to list files: {result.error}")
         files = result.output.get("files")
